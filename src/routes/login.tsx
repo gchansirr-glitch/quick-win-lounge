@@ -34,7 +34,7 @@ function Login() {
     if (pw.length < 6) return toast.error("Password must be at least 6 characters");
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
     login(`${cc} ${phone}`);
-    toast.success(mode === "register" ? "Account created — ₹1,000 welcome bonus!" : "Welcome back!");
+    toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
     nav({ to: "/" });
   };
 

@@ -36,7 +36,7 @@ function Activity() {
               const got = i < s.streak && (done || s.lastCheckIn === new Date(Date.now() - 864e5).toDateString());
               return (
                 <div key={i} className={`flex flex-col items-center rounded-lg py-2 text-[11px] ${got ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
-                  {got ? <Check className="h-4 w-4" /> : <span className="font-bold">₹{(i + 1) * 5}</span>}
+                  {got ? <Check className="h-4 w-4" /> : <span className="font-bold">MMK {(i + 1) * 5}</span>}
                   <span>D{i + 1}</span>
                 </div>
               );
@@ -47,10 +47,10 @@ function Activity() {
 
         <section className="rounded-2xl border border-border bg-card p-4">
           <div className="mb-2 flex items-center gap-2"><Trophy className="h-5 w-5 text-gold" /><h2 className="text-lg font-bold">Daily betting bonus</h2></div>
-          <p className="text-sm text-muted-foreground">Bet ₹100 today to claim ₹10.</p>
+          <p className="text-sm text-muted-foreground">Bet MMK 100 today to claim MMK 10.</p>
           <div className="my-3 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full bg-gradient-red" style={{ width: `${Math.min(100, betToday)}%` }} /></div>
-          <p className="mb-3 text-xs text-muted-foreground">{money(Math.min(betToday, 100))} / ₹100.00</p>
-          <button disabled={betToday < 100 || alreadyClaimed} className={btnPrimary} onClick={() => { s.bonus(10, claimedKey); setClaimed(true); toast.success("+₹10 bonus claimed"); }}>{alreadyClaimed ? "Claimed" : "Claim ₹10"}</button>
+          <p className="mb-3 text-xs text-muted-foreground">{money(Math.min(betToday, 100))} / MMK 100.00</p>
+          <button disabled={betToday < 100 || alreadyClaimed} className={btnPrimary} onClick={() => { s.bonus(10, claimedKey); setClaimed(true); toast.success("+MMK 10 bonus claimed"); }}>{alreadyClaimed ? "Claimed" : "Claim MMK 10"}</button>
         </section>
 
         <section className="rounded-2xl border border-border bg-card p-4">

@@ -114,4 +114,4 @@ export function useStore() {
   if (!c) throw new Error("StoreProvider missing");
   return c;
 }
-export const money = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const money = (n: number) => `MMK ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

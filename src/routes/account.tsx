@@ -21,6 +21,7 @@ function Account() {
   const s = useStore();
   const nav = useNavigate();
   const [sheet, setSheet] = useState<"vault" | "history" | "settings" | null>(null);
+  const [language, setLanguage] = useState<"English" | "Myanmar (Burmese)">("English");
   const [amt, setAmt] = useState("");
   const wagered = s.bets.reduce((a, b) => a + b.amount, 0);
   const vip = Math.min(10, Math.floor(wagered / 1000));
@@ -86,9 +87,17 @@ function Account() {
 
       <BottomSheet open={sheet === "settings"} onClose={() => setSheet(null)} title="Account settings">
         <div className="space-y-2">
-          {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }, { i: Globe, l: "Language: English" }].map(({ i: I, l }) => (
+          {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }].map(({ i: I, l }) => (
             <button key={l} onClick={() => toast("Available in the full version")} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><I className="h-5 w-5 text-primary" />{l}</button>
           ))}
+          <div className="rounded-xl bg-secondary px-4 py-3">
+            <div className="mb-3 flex items-center gap-3"><Globe className="h-5 w-5 text-primary" /><span>Language: {language}</span></div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["English", "Myanmar (Burmese)"] as const).map((option) => (
+                <button key={option} onClick={() => setLanguage(option)} className={`rounded-lg px-3 py-2 text-sm font-semibold ${language === option ? "bg-primary text-primary-foreground" : "bg-background"}`}>{option}</button>
+              ))}
+            </div>
+          </div>
         </div>
       </BottomSheet>
     </AppShell>
