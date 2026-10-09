@@ -18,7 +18,7 @@ export const Route = createFileRoute("/")({
 });
 
 const banners = [
-  { img: "https://ibb.co/mryJJHsT", title: "Prediction Markets", sub: "Call Up or Down in 30s, 1m and 5m rounds" },
+  { img: "/prediction-markets-banner.png", title: "Prediction Markets", sub: "Call Up or Down in 30s, 1m and 5m rounds" },
   { img: banner2, title: "First Deposit Bonus", sub: "Get extra rewards today" },
 ];
 
