@@ -20,7 +20,13 @@ export function useMarketState(m: Market, now: number) {
   const left = Math.max(0, Math.ceil(m.dur - elapsed));
   const target = targetOf(m, period);
   const price = priceAt(m, now);
-  const pUp = probUp(m, price, target, left);
+  const pUpBase = probUp(m, price, target, left);
+  const { bets, marketOverride } = useStore();
+  const positions = bets.filter((b) => b.kind === m.id && b.dur === m.dur && b.period === period);
+  const upVolume = positions.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
+  const downVolume = positions.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
+  const autoBias = upVolume === downVolume ? pUpBase : upVolume > downVolume ? Math.min(pUpBase, 0.28) : Math.max(pUpBase, 0.72);
+  const pUp = marketOverride === "up" ? Math.max(pUpBase, 0.72) : marketOverride === "down" ? Math.min(pUpBase, 0.28) : autoBias;
   return { period, left, target, price, pUp, upOdds: oddsFor(pUp), downOdds: oddsFor(1 - pUp), vol: volumeOf(m, period, elapsed), locked: left <= 3 };
 }
 
@@ -160,7 +166,7 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
         ))}<button onClick={() => setAmt(String(Math.floor(s.balance)))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">Max</button></div>
         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Potential payout</span><span className="font-bold tabular-nums">{money(n * odds)}</span></div>
         <button onClick={confirm} disabled={st.locked} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 ${up ? "bg-win-green" : "bg-win-red"}`}>
-          {up ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}Buy {up ? "Up" : "Down"}
+          {up ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}{up ? "Buy Up" : "Sell Down"}
         </button>
         <p className="text-center text-xs text-muted-foreground">Balance {money(s.balance)}</p>
       </div>
