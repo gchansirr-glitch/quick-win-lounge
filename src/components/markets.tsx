@@ -134,13 +134,13 @@ export function BetSheet({ bet, onClose }: { bet: { m: Market; side: Side } | nu
 function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClose: () => void }) {
   const s = useStore();
   const now = useNow(250);
-  const [amt, setAmt] = useState("50");
+  const [amt, setAmt] = useState("100");
   const st = useMarketState(bet.m, now);
   const odds = bet.side === "up" ? st.upOdds : st.downOdds;
   const n = Number(amt) || 0;
   const up = bet.side === "up";
   const confirm = () => {
-    if (n < 1) return toast.error("Enter an amount");
+    if (n < 100) return toast.error("Minimum bet is MMK 100");
     if (st.locked) return toast.error("Round is closing — wait for the next one");
     if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: n })) return toast.error("Insufficient balance");
     toast.success(`${up ? "UP" : "DOWN"} ${money(n)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
@@ -155,7 +155,7 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
           <div className="rounded-xl bg-secondary p-2"><p className="text-muted-foreground">Closes in</p><p className="font-semibold tabular-nums text-gold">{fmtClock(st.left)}</p></div>
         </div>
         <input inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.]/g, ""))} className={`${inputCls} text-center font-display text-3xl font-bold`} />
-        <div className="grid grid-cols-5 gap-2">{[10, 50, 100, 500].map((v) => (
+        <div className="grid grid-cols-5 gap-2">{[100, 500, 1000, 5000].map((v) => (
           <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>
         ))}<button onClick={() => setAmt(String(Math.floor(s.balance)))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">Max</button></div>
         <div className="flex justify-between text-sm"><span className="text-muted-foreground">Potential payout</span><span className="font-bold tabular-nums">{money(n * odds)}</span></div>
