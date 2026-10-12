@@ -106,26 +106,36 @@ export function PriceChart({ m, now }: { m: Market; now: number }) {
     for (let i = 0; i <= steps; i++) out.push(priceAt(m, now - span + (span * i) / steps));
     return out;
   }, [m, now, span]);
+  const candles = useMemo(() => {
+    const size = 8;
+    return Array.from({ length: Math.floor(pts.length / size) }, (_, i) => {
+      const values = pts.slice(i * size, i * size + size);
+      return { open: values[0], close: values[values.length - 1], high: Math.max(...values), low: Math.min(...values), volume: 18 + ((i * 17) % 34) };
+    });
+  }, [pts]);
   const all = [...pts, target];
   const min = Math.min(...all), max = Math.max(...all), pad = (max - min) * 0.15 || 1;
   const y = (v: number) => 100 - ((v - (min - pad)) / (max - min + pad * 2)) * 100;
-  const d = pts.map((v, i) => `${(i / (pts.length - 1)) * 100},${y(v)}`).join(" L");
   const last = pts[pts.length - 1];
   const up = last >= target;
-  const startX = Math.max(0, ((start - (now - span)) / span) * 100);
   return (
     <div className="relative h-52 w-full">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible">
-        <defs>
-          <linearGradient id="fillg" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={up ? "var(--win-green)" : "var(--win-red)"} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={up ? "var(--win-green)" : "var(--win-red)"} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={`M${d} L100,100 L0,100 Z`} fill="url(#fillg)" />
-        <path d={`M${d}`} fill="none" stroke={up ? "var(--win-green)" : "var(--win-red)"} strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
         <line x1="0" x2="100" y1={y(target)} y2={y(target)} stroke="var(--gold)" strokeDasharray="2 2" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        <line x1={startX} x2={startX} y1="0" y2="100" stroke="var(--muted-foreground)" strokeOpacity="0.4" strokeDasharray="1 2" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        {candles.map((c, i) => {
+          const x = ((i + 0.5) / candles.length) * 100;
+          const width = Math.max(1.2, 70 / candles.length);
+          const rising = c.close >= c.open;
+          const color = rising ? "var(--win-green)" : "var(--win-red)";
+          const bodyTop = Math.min(y(c.open), y(c.close));
+          const bodyHeight = Math.max(1.4, Math.abs(y(c.open) - y(c.close)));
+          const volumeTop = 100 - c.volume;
+          return <g key={i}>
+            <line x1={x} x2={x} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+            <rect x={x - width / 2} y={bodyTop} width={width} height={bodyHeight} fill={color} rx="0.5" />
+            <rect x={x - width / 2} y={volumeTop} width={width} height={c.volume * 0.18} fill={color} opacity="0.45" />
+          </g>;
+        })}
       </svg>
       <span className="absolute right-0 rounded bg-gold px-1.5 text-[10px] font-bold text-background" style={{ top: `calc(${y(target)}% - 8px)` }}>TARGET</span>
       <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${up ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
