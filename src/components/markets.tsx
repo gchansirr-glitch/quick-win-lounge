@@ -101,37 +101,38 @@ export function MarketCard({ m, now, onBet }: { m: Market; now: number; onBet: (
 
 export function PriceChart({ m, now }: { m: Market; now: number }) {
   const period = periodOf(m, now);
-  const start = period * m.dur;
   const target = targetOf(m, period);
-  const span = m.dur;
-  const pts = useMemo(() => {
-    const out: number[] = [];
-    const steps = 80;
-    for (let i = 0; i <= steps; i++) out.push(priceAt(m, now - span + (span * i) / steps));
-    return out;
-  }, [m, now, span]);
-  const all = [...pts, target];
+  const candles = useMemo(() => {
+    const end = Math.floor(now);
+    return Array.from({ length: 32 }, (_, index) => {
+      const closeTime = end - 31 + index;
+      const open = priceAt(m, closeTime - 1);
+      const close = priceAt(m, closeTime);
+      const mid = priceAt(m, closeTime - 0.5);
+      return { open, close, high: Math.max(open, close, mid), low: Math.min(open, close, mid) };
+    });
+  }, [m, now]);
+  const all = candles.flatMap((c) => [c.high, c.low]).concat(target);
   const min = Math.min(...all), max = Math.max(...all), pad = (max - min) * 0.15 || 1;
-  const y = (v: number) => 100 - ((v - (min - pad)) / (max - min + pad * 2)) * 100;
-  const linePoints = pts.map((value, i) => `${(i / (pts.length - 1)) * 100},${y(value)}`).join(" ");
-  const areaPoints = `0,100 ${linePoints} 100,100`;
-  const volumeBars = pts.filter((_, i) => i % 4 === 0).map((_, i, values) => ({
-    x: (i / Math.max(1, values.length - 1)) * 100,
-    height: 8 + ((i * 13) % 20),
-  }));
-  const last = pts[pts.length - 1];
-  const up = last >= target;
+  const y = (value: number) => 100 - ((value - (min - pad)) / (max - min + pad * 2)) * 100;
+  const last = candles[candles.length - 1].close;
   return (
     <div className="relative h-52 w-full">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible" aria-label="Live one-second candlestick chart" role="img">
         {[20, 40, 60, 80].map((value) => <line key={value} x1="0" x2="100" y1={value} y2={value} stroke="var(--border)" strokeWidth="0.35" vectorEffect="non-scaling-stroke" />)}
         <line x1="0" x2="100" y1={y(target)} y2={y(target)} stroke="var(--gold)" strokeDasharray="2 2" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        <polygon points={areaPoints} fill={up ? "var(--win-green)" : "var(--win-red)"} opacity="0.12" />
-        <polyline points={linePoints} fill="none" stroke={up ? "var(--win-green)" : "var(--win-red)"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-        {volumeBars.map((bar, i) => <rect key={i} x={bar.x - 0.7} y={100 - bar.height} width="1.4" height={bar.height} fill={up ? "var(--win-green)" : "var(--win-red)"} opacity="0.3" rx="0.3" />)}
+        {candles.map((candle, index) => {
+          const x = 2 + (index / (candles.length - 1)) * 96;
+          const rising = candle.close >= candle.open;
+          const bodyTop = Math.min(y(candle.open), y(candle.close));
+          const bodyHeight = Math.max(1.2, Math.abs(y(candle.close) - y(candle.open)));
+          const color = rising ? "var(--win-green)" : "var(--win-red)";
+          return <g key={index}><line x1={x} x2={x} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" /><rect x={x - 1.05} y={bodyTop} width="2.1" height={bodyHeight} fill={color} rx="0.25" /></g>;
+        })}
       </svg>
       <span className="absolute right-0 rounded bg-gold px-1.5 text-[10px] font-bold text-background" style={{ top: `calc(${y(target)}% - 8px)` }}>TARGET</span>
-      <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${up ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
+      <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">1s</span>
+      <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${last >= target ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
     </div>
   );
 }

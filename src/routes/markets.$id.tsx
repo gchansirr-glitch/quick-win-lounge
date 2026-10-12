@@ -45,13 +45,13 @@ function MarketDetail() {
         <div className="flex items-center gap-3">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-red shadow-red"><Icon className="h-6 w-6 text-primary-foreground" /></div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs"><span className="font-bold">{m.symbol}</span><span className="flex items-center gap-1 text-win-green"><CircleDot className="size-2.5 fill-current" />Live</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">Demo</span></div>
+            <div className="flex items-center gap-2 text-xs"><span className="font-bold">{m.symbol}</span><span className="flex items-center gap-1 text-win-green"><CircleDot className="size-2.5 fill-current" />Live</span></div>
             <p className="font-display text-3xl font-bold tabular-nums">${fmtPrice(st.price)}</p>
             <p className={`text-sm font-semibold tabular-nums ${diff >= 0 ? "text-win-green" : "text-win-red"}`}>{diff >= 0 ? "▲" : "▼"} {fmtPrice(Math.abs(diff))} vs target</p>
           </div>
           <div className="relative ml-auto grid h-16 w-16 shrink-0 place-items-center">
             <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--secondary)" strokeWidth="3" /><circle cx="18" cy="18" r="16" fill="none" stroke={st.locked ? "var(--primary)" : "var(--gold)"} strokeWidth="3" strokeDasharray={`${pct} 100`} pathLength={100} strokeLinecap="round" /></svg>
-            <span className="text-[10px] text-muted-foreground">Closes in</span><span className={`text-sm font-bold tabular-nums ${st.left < 10 ? "text-primary" : "text-gold"}`}>{fmtClock(st.left)}</span><span className="text-[10px] font-mono text-muted-foreground">{roundLabel(m, st.period)}</span>
+            <span className={`text-sm font-bold tabular-nums ${st.left < 10 ? "text-primary" : "text-gold"}`}>{fmtClock(st.left)}</span>
           </div>
         </div>
 
