@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide-react";
 import { useStore, money } from "@/lib/store";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
-import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, settlementPrice, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
+import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
 export function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -105,19 +105,16 @@ export function PriceChart({ m, now }: { m: Market; now: number }) {
   const roundBets = bets.filter((b) => b.kind === m.id && b.dur === m.dur && b.period === period);
   const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
   const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
-  const projectedResult = resultFor(m, period, upVolume, downVolume, marketOverride);
-  const roundEnd = (period + 1) * m.dur;
   const candles = useMemo(() => {
     const end = Math.floor(now);
     return Array.from({ length: 32 }, (_, index) => {
       const closeTime = end - 31 + index;
-      const naturalOpen = priceAt(m, closeTime - 1);
-      const naturalClose = priceAt(m, closeTime);
+      const open = priceAt(m, closeTime - 1);
+      const close = index === 31 ? priceAt(m, now) : priceAt(m, closeTime);
       const mid = priceAt(m, closeTime - 0.5);
-      const isFinalCandle = closeTime >= roundEnd - 1 && now >= roundEnd - 1;
-      const open = isFinalCandle ? priceAt(m, roundEnd - 1) : naturalOpen;
-      const close = isFinalCandle ? settlementPrice(m, period, projectedResult) : naturalClose;
-      return { open, close, high: Math.max(open, close, mid), low: Math.min(open, close, mid) };
+      const high = Math.max(open, close, mid);
+      const low = Math.min(open, close, mid);
+      return { open, close, high, low };
     });
   }, [m, now]);
   const all = candles.flatMap((c) => [c.high, c.low]).concat(target);
