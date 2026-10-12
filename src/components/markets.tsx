@@ -43,8 +43,12 @@ export function MarketSettler() {
     busy.current = key;
     const m = MARKETS.find((x) => x.id === due.kind);
     if (!m) return;
-    const r = resultOf(m, due.period);
-    const won = s.settle(due.kind, due.dur, due.period, r, (b) => (b.sel === resultOf(m, b.period) ? +(b.amount * b.odds).toFixed(2) : 0));
+    const roundBets = s.bets.filter((b) => b.kind === due.kind && b.dur === due.dur && b.period === due.period);
+    const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
+    const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
+    const autoResult: Side = upVolume === downVolume ? resultOf(m, due.period) : upVolume > downVolume ? "down" : "up";
+    const r = s.marketOverride ?? autoResult;
+    const won = s.settle(due.kind, due.dur, due.period, r, (b) => (b.sel === r ? +(b.amount * b.odds).toFixed(2) : 0));
     if (won > 0) toast.success(`${m.name} closed ${r.toUpperCase()} — you won ${money(won)}!`);
     else toast(`${m.name} closed ${r.toUpperCase()}`);
   }, [now, s]);
@@ -56,7 +60,7 @@ function OddsRow({ side, odds, p, onClick, disabled }: { side: Side; odds: numbe
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
       <div className="min-w-0">
-        <p className="font-semibold">{up ? "Up" : "Down"}</p>
+        <p className="font-semibold">{up ? "Buy Up" : "Sell Down"}</p>
         <div className="mt-1.5 h-[3px] rounded-full bg-secondary">
           <div className={`h-full rounded-full transition-all duration-500 ${up ? "bg-win-green" : "bg-win-red"}`} style={{ width: `${Math.round(p * 100)}%` }} />
         </div>
@@ -196,7 +200,7 @@ export function MyPositions({ marketId }: { marketId?: string }) {
           <div key={b.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-card p-3">
             <span className={`grid h-9 w-9 place-items-center rounded-full ${b.sel === "up" ? "bg-win-green/15 text-win-green" : "bg-win-red/15 text-win-red"}`}>{b.sel === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{m?.name ?? b.kind} · {b.sel.toUpperCase()} @ {b.odds?.toFixed(2)}x</p>
+              <p className="truncate text-sm font-semibold">{m?.name ?? b.kind} · {b.sel === "up" ? "Buy Up" : "Sell Down"} @ {b.odds?.toFixed(2)}x</p>
               <p className="truncate text-xs text-muted-foreground tabular-nums">{m ? roundLabel(m, b.period) : ""} · {money(b.amount)}</p>
             </div>
             <span className={`text-sm font-bold tabular-nums ${!b.settled ? "text-gold" : b.won ? "text-win-green" : "text-muted-foreground"}`}>{!b.settled ? "Open" : b.won ? `+${money(b.won)}` : "Lost"}</span>

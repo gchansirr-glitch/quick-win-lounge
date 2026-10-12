@@ -3,6 +3,7 @@ import type { MarketId, Side } from "./market";
 type GameKind = MarketId;
 
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
+export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean };
 
@@ -16,9 +17,10 @@ type State = {
   streak: number;
   redeemed: string[];
   marketOverride: Side | null;
+  requests: CashRequest[];
 };
 
-const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null };
+const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, requests: [] };
 const KEY = "tp-lottery-v1";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -28,7 +30,8 @@ type Ctx = State & {
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   deposit: (amt: number, method: string) => void;
-  withdraw: (amt: number) => boolean;
+  withdraw: (amt: number, method: string, account: string) => boolean;
+  reviewRequest: (id: string, status: "approved" | "rejected") => void;
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
   settle: (kind: GameKind, dur: number, period: number, result: Side, calc: (b: Bet) => number) => number;
   bonus: (amt: number, note: string) => void;
@@ -59,12 +62,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     logout: () => setS((p) => ({ ...p, user: null })),
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
-    deposit: (amt, m) => setS((p) => ({ ...p, balance: p.balance + amt, txs: [tx("deposit", amt, m), ...p.txs] })),
-    withdraw: (amt) => {
+    deposit: (amt, method) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, status: "pending", at: Date.now() }, ...p.requests] })),
+    withdraw: (amt, method, account) => {
       if (amt > s.balance) return false;
-      setS((p) => ({ ...p, balance: p.balance - amt, txs: [tx("withdraw", -amt, "Bank withdrawal"), ...p.txs] }));
+      setS((p) => ({ ...p, requests: [{ id: uid(), type: "withdraw", amount: amt, method, account, status: "pending", at: Date.now() }, ...p.requests] }));
       return true;
     },
+    reviewRequest: (id, status) => setS((p) => {
+      const request = p.requests.find((r) => r.id === id);
+      if (!request || request.status !== "pending") return p;
+      const approved = status === "approved";
+      const delta = approved ? (request.type === "deposit" ? request.amount : -request.amount) : 0;
+      return { ...p, balance: p.balance + delta, requests: p.requests.map((r) => r.id === id ? { ...r, status } : r), txs: approved ? [tx(request.type, request.type === "deposit" ? request.amount : -request.amount, `${request.method} approved`), ...p.txs] : p.txs };
+    }),
     placeBet: (b) => {
       if (b.amount > s.balance) return false;
       setS((p) => ({ ...p, balance: p.balance - b.amount, bets: [{ ...b, id: uid(), at: Date.now() }, ...p.bets].slice(0, 200), txs: [tx("bet", -b.amount, `${b.kind === "trx" ? "TRX " : ""}Win Go bet`), ...p.txs] }));

@@ -39,11 +39,11 @@ function WalletPage() {
     const n = Number(amt);
     const minimum = open === "deposit" ? 5000 : 10000;
     if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
-    if (open === "deposit") { s.deposit(n, `${method} deposit`); toast.success(`Deposited ${money(n)}`); }
+    if (open === "deposit") { s.deposit(n, method); toast.success(`Deposit request for ${money(n)} submitted for review`); }
     else {
       if (acct.length < 6) return toast.error("Enter your account number");
-      if (!s.withdraw(n)) return toast.error("Insufficient balance");
-      toast.success(`Withdrawal of ${money(n)} submitted`);
+      if (!s.withdraw(n, method, acct)) return toast.error("Insufficient balance");
+      toast.success(`Withdrawal request for ${money(n)} submitted for review`);
     }
     setAmt(""); setOpen(null);
   };
