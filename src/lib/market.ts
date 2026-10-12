@@ -41,7 +41,7 @@ export function probUp(m: Market, price: number, target: number, left: number) {
   const urgency = 1 + (1 - left / m.dur) * 2;
   return Math.min(0.94, Math.max(0.06, 0.5 + diff * 0.35 * urgency));
 }
-export const oddsFor = (p: number) => Math.min(3, Math.max(1.02, Math.round((0.96 / p) * 100) / 100));
+export const oddsFor = (_p: number) => 2;
 
 export function volumeOf(m: Market, period: number, elapsed: number) {
   return 600 + (seeded(`${m.id}v${period}`) % 900) + elapsed * (m.id === "micro" ? 40 : m.id === "alpha" ? 22 : 6);
