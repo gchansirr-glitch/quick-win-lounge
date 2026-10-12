@@ -1,9 +1,10 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useState } from "react";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, CircleDot, ShieldCheck, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { BetSheet, MyPositions, PriceChart, marketIcon, useMarketState, useNow } from "@/components/markets";
 import { MARKETS, fmtClock, fmtPrice, resultOf, roundLabel, closeOf, type Side } from "@/lib/market";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/markets/$id")({
   loader: ({ params }) => {
@@ -25,26 +26,32 @@ function MarketDetail() {
   const m = MARKETS.find((x) => x.id === id)!;
   const now = useNow(250);
   const st = useMarketState(m, now);
+  const s = useStore();
   const [bet, setBet] = useState<{ m: typeof m; side: Side } | null>(null);
-  const [tab, setTab] = useState<"history" | "mine">("history");
+  const [tab, setTab] = useState<"position" | "mine" | "history">("position");
   const Icon = marketIcon[m.id];
   const diff = st.price - st.target;
   const pct = (st.left / m.dur) * 100;
   const history = Array.from({ length: 12 }, (_, i) => st.period - 1 - i);
+  const fixedOdds = 2;
+  const markets = MARKETS;
 
   return (
     <AppShell title={m.name} back nav={false}>
-      <div className="space-y-4 pb-24">
+      <div className="space-y-4 pb-28">
+        <div className="grid grid-cols-3 gap-2">
+          {markets.map((market) => <a key={market.id} href={`/markets/${market.id}`} className={`rounded-2xl border p-2.5 text-center transition ${market.id === m.id ? "border-primary bg-primary text-primary-foreground" : "border-white/10 bg-card text-muted-foreground"}`}><div className="mx-auto mb-1 grid size-7 place-items-center rounded-lg bg-black/20"><span className="text-xs font-bold">{market.symbol.slice(0, 2)}</span></div><p className="truncate text-[11px] font-bold">{market.name}</p><p className="mt-0.5 text-[10px] opacity-70">{market.tag} rounds</p></a>)}
+        </div>
         <div className="flex items-center gap-3">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-red shadow-red"><Icon className="h-6 w-6 text-primary-foreground" /></div>
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">{m.symbol} · Round {roundLabel(m, st.period)}</p>
+            <div className="flex items-center gap-2 text-xs"><span className="font-bold">{m.symbol}</span><span className="flex items-center gap-1 text-win-green"><CircleDot className="size-2.5 fill-current" />Live</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">Demo</span></div>
             <p className="font-display text-3xl font-bold tabular-nums">${fmtPrice(st.price)}</p>
             <p className={`text-sm font-semibold tabular-nums ${diff >= 0 ? "text-win-green" : "text-win-red"}`}>{diff >= 0 ? "▲" : "▼"} {fmtPrice(Math.abs(diff))} vs target</p>
           </div>
           <div className="relative ml-auto grid h-16 w-16 shrink-0 place-items-center">
             <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--secondary)" strokeWidth="3" /><circle cx="18" cy="18" r="16" fill="none" stroke={st.locked ? "var(--primary)" : "var(--gold)"} strokeWidth="3" strokeDasharray={`${pct} 100`} pathLength={100} strokeLinecap="round" /></svg>
-            <span className="text-sm font-bold tabular-nums">{fmtClock(st.left)}</span>
+            <span className="text-[10px] text-muted-foreground">Closes in</span><span className={`text-sm font-bold tabular-nums ${st.left < 10 ? "text-primary" : "text-gold"}`}>{fmtClock(st.left)}</span><span className="text-[10px] font-mono text-muted-foreground">{roundLabel(m, st.period)}</span>
           </div>
         </div>
 
@@ -60,12 +67,10 @@ function MarketDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          {(["history", "mine"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={`rounded-xl py-2 text-sm font-semibold ${tab === t ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"}`}>{t === "history" ? "Round history" : "My positions"}</button>
-          ))}
+        <div className="grid grid-cols-3 border-b border-white/10">
+          {(["position", "mine", "history"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`border-b-2 py-3 text-xs font-bold ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t === "position" ? "Position" : t === "mine" ? "My History" : "Game History"}{t === "position" && <span className="ml-1 rounded-full bg-white/10 px-1.5">{s.bets.filter((b) => !b.settled && b.kind === m.id).length}</span>}</button>)}
         </div>
-        {tab === "history" ? (
+        {tab === "position" ? <MyPositions marketId={m.id} /> : tab === "mine" ? <MyPositions marketId={m.id} /> : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
             {history.map((p) => {
               const r = resultOf(m, p);
@@ -78,12 +83,12 @@ function MarketDetail() {
               );
             })}
           </div>
-        ) : <MyPositions marketId={m.id} />}
+        )}
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 mx-auto grid max-w-md grid-cols-2 gap-3 border-t border-border bg-surface/95 p-4 backdrop-blur">
-        <button disabled={st.locked} onClick={() => setBet({ m, side: "up" })} className="rounded-xl bg-win-green py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40">Up · {st.upOdds.toFixed(2)}x</button>
-        <button disabled={st.locked} onClick={() => setBet({ m, side: "down" })} className="rounded-xl bg-win-red py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40">Down · {st.downOdds.toFixed(2)}x</button>
+        <button disabled={st.locked} onClick={() => setBet({ m, side: "up" })} className="flex items-center justify-center gap-2 rounded-xl bg-win-green py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40"><ArrowUpRight className="size-4" />Buy Up · {fixedOdds.toFixed(2)}x</button>
+        <button disabled={st.locked} onClick={() => setBet({ m, side: "down" })} className="flex items-center justify-center gap-2 rounded-xl bg-primary py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40"><ArrowDownRight className="size-4" />Sell Down · {fixedOdds.toFixed(2)}x</button>
       </div>
       <BetSheet bet={bet} onClose={() => setBet(null)} />
     </AppShell>
