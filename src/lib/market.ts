@@ -35,6 +35,18 @@ export const targetOf = (m: Market, period: number) => priceAt(m, period * m.dur
 export const closeOf = (m: Market, period: number) => priceAt(m, (period + 1) * m.dur);
 export const resultOf = (m: Market, period: number): Side => (closeOf(m, period) >= targetOf(m, period) ? "up" : "down");
 
+export function resultFor(m: Market, period: number, upVolume: number, downVolume: number, override: Side | null = null): Side {
+  if (override) return override;
+  if (upVolume !== downVolume) return upVolume > downVolume ? "down" : "up";
+  return resultOf(m, period);
+}
+
+export function settlementPrice(m: Market, period: number, result: Side) {
+  const target = targetOf(m, period);
+  const separation = Math.max(m.base * m.vol * 1.8, m.base * 0.0025);
+  return result === "up" ? target + separation : target - separation;
+}
+
 /** Implied probability of "up" given current price vs target and time remaining. */
 export function probUp(m: Market, price: number, target: number, left: number) {
   const diff = (price - target) / target / m.vol;

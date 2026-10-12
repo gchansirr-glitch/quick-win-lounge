@@ -70,7 +70,7 @@ function MarketDetail() {
         <div className="grid grid-cols-3 border-b border-white/10">
           {(["position", "mine", "history"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`border-b-2 py-3 text-xs font-bold ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t === "position" ? "Position" : t === "mine" ? "My History" : "Game History"}{t === "position" && <span className="ml-1 rounded-full bg-white/10 px-1.5">{s.bets.filter((b) => !b.settled && b.kind === m.id).length}</span>}</button>)}
         </div>
-        {tab === "position" ? <MyPositions marketId={m.id} /> : tab === "mine" ? <MyPositions marketId={m.id} /> : (
+        {tab === "position" ? <MyPositions marketId={m.id} activeOnly /> : tab === "mine" ? <MyPositions marketId={m.id} /> : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
             {history.map((p) => {
               const r = resultOf(m, p);

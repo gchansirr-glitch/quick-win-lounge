@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide-react";
 import { useStore, money } from "@/lib/store";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
-import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultOf, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
+import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, settlementPrice, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
 export function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -46,8 +46,7 @@ export function MarketSettler() {
     const roundBets = s.bets.filter((b) => b.kind === due.kind && b.dur === due.dur && b.period === due.period);
     const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
     const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
-    const autoResult: Side = upVolume === downVolume ? resultOf(m, due.period) : upVolume > downVolume ? "down" : "up";
-    const r = s.marketOverride ?? autoResult;
+    const r = resultFor(m, due.period, upVolume, downVolume, s.marketOverride);
     const won = s.settle(due.kind, due.dur, due.period, r, (b) => (b.sel === r ? +(b.amount * b.odds).toFixed(2) : 0));
     if (won > 0) toast.success(`${m.name} closed ${r.toUpperCase()} — you won ${money(won)}!`);
     else toast(`${m.name} closed ${r.toUpperCase()}`);
@@ -102,13 +101,22 @@ export function MarketCard({ m, now, onBet }: { m: Market; now: number; onBet: (
 export function PriceChart({ m, now }: { m: Market; now: number }) {
   const period = periodOf(m, now);
   const target = targetOf(m, period);
+  const { bets, marketOverride } = useStore();
+  const roundBets = bets.filter((b) => b.kind === m.id && b.dur === m.dur && b.period === period);
+  const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
+  const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
+  const projectedResult = resultFor(m, period, upVolume, downVolume, marketOverride);
+  const roundEnd = (period + 1) * m.dur;
   const candles = useMemo(() => {
     const end = Math.floor(now);
     return Array.from({ length: 32 }, (_, index) => {
       const closeTime = end - 31 + index;
-      const open = priceAt(m, closeTime - 1);
-      const close = priceAt(m, closeTime);
+      const naturalOpen = priceAt(m, closeTime - 1);
+      const naturalClose = priceAt(m, closeTime);
       const mid = priceAt(m, closeTime - 0.5);
+      const isFinalCandle = closeTime >= roundEnd - 1 && now >= roundEnd - 1;
+      const open = isFinalCandle ? priceAt(m, roundEnd - 1) : naturalOpen;
+      const close = isFinalCandle ? settlementPrice(m, period, projectedResult) : naturalClose;
       return { open, close, high: Math.max(open, close, mid), low: Math.min(open, close, mid) };
     });
   }, [m, now]);
@@ -178,9 +186,9 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   );
 }
 
-export function MyPositions({ marketId }: { marketId?: string }) {
+export function MyPositions({ marketId, activeOnly = false }: { marketId?: string; activeOnly?: boolean }) {
   const s = useStore();
-  const list = s.bets.filter((b) => !marketId || b.kind === marketId).slice(0, 30);
+  const list = s.bets.filter((b) => (!marketId || b.kind === marketId) && (!activeOnly || !b.settled)).slice(0, 30);
   if (!list.length) return <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted-foreground"><Activity className="mx-auto mb-2 h-5 w-5" />No positions yet</p>;
   return (
     <div className="space-y-2">
