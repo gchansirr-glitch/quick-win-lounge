@@ -5,7 +5,6 @@ import { MARKETS, type Market, type Side } from "@/lib/market";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useStore, money } from "@/lib/store";
-import banner1 from "@/assets/banner-1.jpg";
 import banner2 from "@/assets/banner-2.jpg";
 
 export const Route = createFileRoute("/")({
@@ -19,7 +18,7 @@ export const Route = createFileRoute("/")({
 });
 
 const banners = [
-  { img: banner1, title: "Prediction Markets", sub: "Call Up or Down in 30s, 1m and 5m rounds" },
+  { img: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/3d87cfda5deb340736335ff3576d24df-PJwgpST1K48wvABIpkcMqPHMoTqRft.jpg", title: "Trading Markets", sub: "Call Up or Down in 30s, 1m and 5m rounds" },
   { img: banner2, title: "First Deposit Bonus", sub: "Get extra rewards today" },
 ];
 

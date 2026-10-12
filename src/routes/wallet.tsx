@@ -37,7 +37,8 @@ function WalletPage() {
 
   const submit = () => {
     const n = Number(amt);
-    if (!n || n < 100) return toast.error("Minimum amount is ₹100");
+    const minimum = open === "deposit" ? 5000 : 10000;
+    if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
     if (open === "deposit") { s.deposit(n, `${method} deposit`); toast.success(`Deposited ${money(n)}`); }
     else {
       if (acct.length < 6) return toast.error("Enter your account number");
@@ -80,8 +81,8 @@ function WalletPage() {
               <input value={acct} onChange={(e) => setAcct(e.target.value)} placeholder="Bank / wallet account number" className={inputCls} />
             </>
           )}
-          <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ""))} placeholder="Amount (min ₹100)" className={inputCls} />
-          <div className="grid grid-cols-4 gap-2">{[100, 500, 1000, 5000].map((v) => (
+          <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ""))} placeholder={`Amount (min MMK ${open === "deposit" ? "5,000" : "10,000"})`} className={inputCls} />
+          <div className="grid grid-cols-4 gap-2">{(open === "deposit" ? [5000, 10000, 20000, 50000] : [10000, 20000, 50000, 100000]).map((v) => (
             <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>
           ))}</div>
           <button className={btnPrimary} onClick={submit}>{open === "deposit" ? "Deposit now" : "Withdraw now"}</button>

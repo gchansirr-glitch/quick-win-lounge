@@ -4,7 +4,7 @@ type GameKind = MarketId;
 
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
-type User = { phone: string; uid: string; inviteCode: string };
+export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean };
 
 type State = {
   user: User | null;
@@ -15,16 +15,18 @@ type State = {
   lastCheckIn: string | null;
   streak: number;
   redeemed: string[];
+  marketOverride: Side | null;
 };
 
-const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [] };
+const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null };
 const KEY = "tp-lottery-v1";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (phone: string) => void;
+  login: (email: string) => void;
   logout: () => void;
+  setMarketOverride: (side: Side | null) => void;
   deposit: (amt: number, method: string) => void;
   withdraw: (amt: number) => boolean;
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
@@ -50,12 +52,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api: Ctx = {
     ...s, ready,
-    login: (phone) => setS((p) => p.user?.phone === phone ? p : {
+    login: (email) => setS((p) => p.user?.email === email ? p : {
       ...initial,
-      user: { phone, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7) },
+      user: { email, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: email === "acagaming75@gmail.com" },
       balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")],
     }),
     logout: () => setS((p) => ({ ...p, user: null })),
+    setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     deposit: (amt, m) => setS((p) => ({ ...p, balance: p.balance + amt, txs: [tx("deposit", amt, m), ...p.txs] })),
     withdraw: (amt) => {
       if (amt > s.balance) return false;
@@ -114,4 +117,4 @@ export function useStore() {
   if (!c) throw new Error("StoreProvider missing");
   return c;
 }
-export const money = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const money = (n: number) => `MMK ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Crown, Copy, Vault, History, Settings, LogOut, ChevronRight, Bell, Lock, Globe } from "lucide-react";
@@ -43,9 +43,9 @@ function Account() {
       <div className="space-y-4">
         <div className="rounded-2xl bg-gradient-red p-5 shadow-red text-primary-foreground">
           <div className="flex items-center gap-3">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-background/25 font-display text-2xl font-bold">{s.user!.phone.slice(-2)}</div>
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-background/25 font-display text-2xl font-bold">{s.user!.email.slice(-2)}</div>
             <div className="min-w-0">
-              <p className="flex items-center gap-2 truncate font-bold">{s.user!.phone}<span className="flex shrink-0 items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-xs text-background"><Crown className="h-3 w-3" />VIP{vip}</span></p>
+              <p className="flex items-center gap-2 truncate font-bold">{s.user!.email}<span className="flex shrink-0 items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-xs text-background"><Crown className="h-3 w-3" />VIP{vip}</span></p>
               <button onClick={() => { navigator.clipboard?.writeText(s.user!.uid); toast.success("UID copied"); }} className="flex items-center gap-1 text-sm opacity-90">UID {s.user!.uid}<Copy className="h-3 w-3" /></button>
             </div>
           </div>
@@ -66,6 +66,7 @@ function Account() {
           ))}
         </div>
 
+        {s.user?.isAdmin && <Link to="/admin" className="flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 p-4 text-left"><span className="flex items-center gap-3 font-semibold text-primary"><Crown className="h-5 w-5" />Admin Dashboard</span><ChevronRight className="h-5 w-5 text-primary" /></Link>}
         <button onClick={() => { s.logout(); nav({ to: "/login" }); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary py-3 font-semibold text-primary"><LogOut className="h-4 w-4" />Log out</button>
       </div>
 
@@ -86,9 +87,10 @@ function Account() {
 
       <BottomSheet open={sheet === "settings"} onClose={() => setSheet(null)} title="Account settings">
         <div className="space-y-2">
-          {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }, { i: Globe, l: "Language: English" }].map(({ i: I, l }) => (
+          {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }].map(({ i: I, l }) => (
             <button key={l} onClick={() => toast("Available in the full version")} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><I className="h-5 w-5 text-primary" />{l}</button>
           ))}
+          <div className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3"><Globe className="h-5 w-5 text-primary" /><span>Language: English</span></div>
         </div>
       </BottomSheet>
     </AppShell>

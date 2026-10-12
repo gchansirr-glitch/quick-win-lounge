@@ -1,28 +1,25 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Eye, EyeOff, Phone, Lock } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { btnPrimary, inputCls } from "@/components/Sheet";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [
     { title: "Log in or Register — TP LOTTERY" },
-    { name: "description", content: "Sign in to TP LOTTERY with your phone number." },
+    { name: "description", content: "Sign in to TP LOTTERY with your email address." },
     { property: "og:title", content: "Log in — TP LOTTERY" },
-    { property: "og:description", content: "Sign in to TP LOTTERY with your phone number." },
+    { property: "og:description", content: "Sign in to TP LOTTERY with your email address." },
   ] }),
   component: Login,
 });
-
-const CODES = ["+95", "+91", "+66", "+84", "+63", "+62", "+1"];
 
 function Login() {
   const { login } = useStore();
   const nav = useNavigate();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [cc, setCc] = useState("+95");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [invite, setInvite] = useState("");
@@ -30,11 +27,11 @@ function Login() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length < 7) return toast.error("Enter a valid phone number");
+    if (!/^\S+@\S+\.\S+$/.test(email)) return toast.error("Enter a valid email address");
     if (pw.length < 6) return toast.error("Password must be at least 6 characters");
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
-    login(`${cc} ${phone}`);
-    toast.success(mode === "register" ? "Account created — ₹1,000 welcome bonus!" : "Welcome back!");
+    login(email.trim().toLowerCase());
+    toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
     nav({ to: "/" });
   };
 
@@ -42,7 +39,7 @@ function Login() {
     <div className="mx-auto min-h-screen max-w-md bg-background">
       <div className="bg-gradient-red px-6 pb-10 pt-12">
         <h1 className="text-4xl font-bold tracking-wide text-primary-foreground">TP LOTTERY</h1>
-        <p className="mt-1 text-sm text-primary-foreground/80">{mode === "login" ? "Log in with your phone number" : "Create your account"}</p>
+        <p className="mt-1 text-sm text-primary-foreground/80">{mode === "login" ? "Log in with your email address" : "Create your account"}</p>
       </div>
       <div className="-mt-5 rounded-t-3xl bg-background px-6 pt-6">
         <div className="mb-6 grid grid-cols-2 gap-2 rounded-xl bg-card p-1">
@@ -51,13 +48,8 @@ function Login() {
           ))}
         </div>
         <form onSubmit={submit} className="space-y-4">
-          <label className="block text-sm font-semibold"><span className="mb-2 flex items-center gap-2"><Phone className="h-4 w-4 text-primary" />Phone number</span>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
-              <select value={cc} onChange={(e) => setCc(e.target.value)} className="rounded-xl border border-input bg-secondary px-3">
-                {CODES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-              <input inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 12))} placeholder="Phone number" className={inputCls} />
-            </div>
+          <label className="block text-sm font-semibold"><span className="mb-2 flex items-center gap-2"><Mail className="h-4 w-4 text-primary" />Email address</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={inputCls} />
           </label>
           <label className="block text-sm font-semibold"><span className="mb-2 flex items-center gap-2"><Lock className="h-4 w-4 text-primary" />Password</span>
             <div className="relative">
@@ -70,7 +62,7 @@ function Login() {
             <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Invite code (optional)" className={inputCls} />
           </>)}
           <button className={btnPrimary}>{mode === "login" ? "Log in" : "Register"}</button>
-          <p className="text-center text-xs text-muted-foreground">Demo app — no real money. Any phone and password work.</p>
+          <p className="text-center text-xs text-muted-foreground">Frontend demo — no real money. Use any email and password.</p>
         </form>
       </div>
     </div>
