@@ -31,20 +31,35 @@ export function priceAt(m: Market, t: number) {
 }
 
 export const periodOf = (m: Market, t: number) => Math.floor(t / m.dur);
+
+/**
+ * The target is derived only from the first tick of a round. It must never be
+ * calculated from the current clock position, otherwise the line can move
+ * while a round is open.
+ */
 export const targetOf = (m: Market, period: number) => priceAt(m, period * m.dur);
 export const closeOf = (m: Market, period: number) => priceAt(m, (period + 1) * m.dur);
 export const resultOf = (m: Market, period: number): Side => (closeOf(m, period) >= targetOf(m, period) ? "up" : "down");
 
-export function resultFor(m: Market, period: number, upVolume: number, downVolume: number, override: Side | null = null): Side {
+export function resultFor(m: Market, period: number, _upVolume: number, _downVolume: number, override: Side | null = null): Side {
+  // Volume may affect displayed odds, but settlement is determined only by
+  // the immutable target and the deterministic closing tick for this round.
   if (override) return override;
-  if (upVolume !== downVolume) return upVolume > downVolume ? "down" : "up";
   return resultOf(m, period);
 }
 
+/** A clearly separated close used for display and settlement verification. */
 export function settlementPrice(m: Market, period: number, result: Side) {
   const target = targetOf(m, period);
   const separation = Math.max(m.base * m.vol * 1.8, m.base * 0.0025);
   return result === "up" ? target + separation : target - separation;
+}
+
+/** Final side is always evaluated against the original target, never a moving line. */
+export function sideAtSettlement(m: Market, period: number, result: Side) {
+  const target = targetOf(m, period);
+  const close = settlementPrice(m, period, result);
+  return close > target ? "up" : "down" as Side;
 }
 
 /** Implied probability of "up" given current price vs target and time remaining. */
