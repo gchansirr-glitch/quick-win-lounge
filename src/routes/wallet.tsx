@@ -72,9 +72,12 @@ function WalletPage() {
       <BottomSheet open={!!open} onClose={() => setOpen(null)} title={open === "deposit" ? "Deposit" : "Withdraw"}>
         <div className="space-y-3">
           {open === "deposit" ? (
+            <>
+            {(s.paymentAccounts.kpayPhone || s.paymentAccounts.wavePhone || s.paymentAccounts.qrCode) && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3"><p className="text-xs font-bold uppercase tracking-wider text-primary">Transfer to</p><div className="mt-2 flex flex-col gap-2 text-sm">{s.paymentAccounts.kpayPhone && <p><span className="font-semibold">KPay:</span> {s.paymentAccounts.kpayPhone} · {s.paymentAccounts.kpayName}</p>}{s.paymentAccounts.wavePhone && <p><span className="font-semibold">Wave Pay:</span> {s.paymentAccounts.wavePhone} · {s.paymentAccounts.waveName}</p>}{s.paymentAccounts.qrCode && <img src={s.paymentAccounts.qrCode} alt="Admin deposit QR code" className="mt-1 max-h-40 rounded-lg object-contain" />}</div><p className="mt-2 text-xs text-muted-foreground">Send the amount first, then submit your request below for manual review.</p></div>}
             <div className="grid grid-cols-2 gap-2">{METHODS.map((m) => (
               <button key={m} onClick={() => setMethod(m)} className={`rounded-lg py-2 text-sm font-semibold ${method === m ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>{m}</button>
-            ))}</div>
+            ))}            </div>
+            </>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">Withdrawable: {money(s.balance)}</p>

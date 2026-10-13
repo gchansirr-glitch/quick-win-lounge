@@ -6,9 +6,12 @@ export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "b
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean };
+export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
 
 type State = {
   user: User | null;
+  registeredUsers: User[];
+  paymentAccounts: PaymentAccount;
   balance: number;
   vault: number;
   txs: Tx[];
@@ -17,10 +20,11 @@ type State = {
   streak: number;
   redeemed: string[];
   marketOverride: Side | null;
+  marketOverrides: Partial<Record<MarketId, Side>>;
   requests: CashRequest[];
 };
 
-const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, requests: [] };
+const initial: State = { user: null, registeredUsers: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [] };
 const KEY = "tp-lottery-v1";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -29,6 +33,8 @@ type Ctx = State & {
   login: (email: string) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
+  setMarketDirection: (market: MarketId, side: Side | null) => void;
+  savePaymentAccounts: (accounts: PaymentAccount) => void;
   deposit: (amt: number, method: string) => void;
   withdraw: (amt: number, method: string, account: string) => boolean;
   reviewRequest: (id: string, status: "approved" | "rejected") => void;
@@ -55,13 +61,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api: Ctx = {
     ...s, ready,
-    login: (email) => setS((p) => p.user?.email === email ? p : {
-      ...initial,
-      user: { email, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: email === "acagaming75@gmail.com" },
-      balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")],
+    login: (email) => setS((p) => {
+      const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
+      const account = existing ?? { email, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: email.toLowerCase() === "acagaming75@gmail.com" };
+      return p.user?.email === email ? p : { ...initial, registeredUsers: existing ? p.registeredUsers : [...p.registeredUsers, account], paymentAccounts: p.paymentAccounts, user: account, balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")] };
     }),
     logout: () => setS((p) => ({ ...p, user: null })),
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
+    setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
+    savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
     deposit: (amt, method) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, status: "pending", at: Date.now() }, ...p.requests] })),
     withdraw: (amt, method, account) => {
       if (amt > s.balance) return false;
