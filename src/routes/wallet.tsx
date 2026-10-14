@@ -31,6 +31,7 @@ function WalletPage() {
   const [selectedAccount, setSelectedAccount] = useState("");
   const [receiptImage, setReceiptImage] = useState("");
   const [referenceLast5, setReferenceLast5] = useState("");
+  const [depositStep, setDepositStep] = useState<1 | 2>(1);
   const [editingAccounts, setEditingAccounts] = useState(false);
   const [accountDraft, setAccountDraft] = useState(s.paymentAccounts);
   const [filter, setFilter] = useState<"all" | "deposit" | "withdraw" | "game">("all");
@@ -55,7 +56,7 @@ function WalletPage() {
       if (!s.withdraw(n, method, paymentAccount)) return toast.error("Insufficient balance");
       toast.success(`Withdrawal request for ${money(n)} submitted for review`);
     }
-    setAmt(""); setOpen(null);
+    setAmt(""); setReceiptImage(""); setReferenceLast5(""); setDepositStep(1); setOpen(null);
   };
 
   return (
@@ -95,15 +96,21 @@ function WalletPage() {
         <div className="space-y-3">
           {open === "deposit" ? (
             <>
-            <div className="grid grid-cols-2 gap-2">{METHODS.map((m) => (
-              <button key={m} onClick={() => setMethod(m)} className={`rounded-lg py-2 text-sm font-semibold ${method === m ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>{m}</button>
-            ))}</div>
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
-              <p className="font-semibold">{method} transfer account</p>
-              <p className="mt-1 text-muted-foreground">{method === "KPay" ? (s.paymentAccounts.kpayPhone ? `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` : "Admin has not configured a KPay account") : (s.paymentAccounts.wavePhone ? `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` : "Admin has not configured a Wave Pay account")}</p>
-            </div>
-            <label className="block text-sm font-medium">Transfer receipt <span className="text-muted-foreground">(optional if reference is provided)</span><input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setReceiptImage(String(reader.result)); reader.readAsDataURL(file); }} className="mt-1 block w-full text-xs" /></label>
-            <input inputMode="numeric" maxLength={5} value={referenceLast5} onChange={(e) => setReferenceLast5(e.target.value.replace(/\\D/g, "").slice(0, 5))} placeholder="Last 5 transaction digits (optional)" className={inputCls} />
+              <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground"><span className={depositStep === 1 ? "text-primary" : ""}>1. Deposit details</span><span className={depositStep === 2 ? "text-primary" : ""}>2. Confirm transfer</span></div>
+              {depositStep === 1 ? <>
+                <div className="grid grid-cols-2 gap-2">{METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} className={`rounded-lg py-2 text-sm font-semibold ${method === m ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>{m}</button>)}</div>
+                <p className="text-sm font-semibold">Your sending account</p>
+                <div className="grid grid-cols-2 gap-2"><input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder={`${method} phone number`} className={inputCls} /><input value={method === "KPay" ? s.paymentAccounts.kpayName : s.paymentAccounts.waveName} readOnly placeholder="Account name" className={inputCls} /></div>
+                {(method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone) && <button onClick={() => { const phone = method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone; setAcct(phone); setSelectedAccount(phone); }} className="text-left text-xs text-primary">Use saved {method} account</button>}
+                <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\\D/g, ""))} placeholder="Amount (min MMK 5,000)" className={inputCls} />
+                <div className="grid grid-cols-4 gap-2">{[5000, 10000, 20000, 50000].map((v) => <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>)}</div>
+                <button className={btnPrimary} onClick={() => { const n = Number(amt); if (!n || n < 5000) return toast.error("Minimum deposit is MMK 5,000"); if (acct.length < 6) return toast.error("Enter your sending phone number"); setDepositStep(2); }}>Continue to transfer details</button>
+              </> : <>
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm"><p className="font-semibold">Send {money(Number(amt))} to admin {method}</p><p className="mt-1 text-muted-foreground">{method === "KPay" ? (s.paymentAccounts.kpayPhone ? `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` : "Admin has not configured a KPay account") : (s.paymentAccounts.wavePhone ? `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` : "Admin has not configured a Wave Pay account")}</p></div>
+                <label className="block text-sm font-medium">Transfer receipt <span className="text-muted-foreground">(optional if reference is provided)</span><input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setReceiptImage(String(reader.result)); reader.readAsDataURL(file); }} className="mt-1 block w-full text-xs" /></label>
+                <input inputMode="numeric" maxLength={5} value={referenceLast5} onChange={(e) => setReferenceLast5(e.target.value.replace(/\\D/g, "").slice(0, 5))} placeholder="Last 5 transaction digits (optional)" className={inputCls} />
+                <div className="grid grid-cols-2 gap-2"><button className="rounded-xl bg-secondary py-3 font-semibold" onClick={() => setDepositStep(1)}>Back</button><button className={btnPrimary} onClick={submit}>Confirm Deposit Request</button></div>
+              </>}
             </>
           ) : (
             <>
@@ -112,11 +119,11 @@ function WalletPage() {
               <input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder="Bank / wallet account number" className={inputCls} />
             </>
           )}
-          <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ""))} placeholder={`Amount (min MMK ${open === "deposit" ? "5,000" : "10,000"})`} className={inputCls} />
-          <div className="grid grid-cols-4 gap-2">{(open === "deposit" ? [5000, 10000, 20000, 50000] : [10000, 20000, 50000, 100000]).map((v) => (
-            <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>
-          ))}</div>
-          <button className={btnPrimary} onClick={submit}>{open === "deposit" ? "Deposit now" : "Withdraw now"}</button>
+          {open === "withdraw" && <>
+            <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ""))} placeholder="Amount (min MMK 10,000)" className={inputCls} />
+            <div className="grid grid-cols-4 gap-2">{[10000, 20000, 50000, 100000].map((v) => <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>)}</div>
+            <button className={btnPrimary} onClick={submit}>Withdraw now</button>
+          </>}
         </div>
       </BottomSheet>
     </AppShell>
