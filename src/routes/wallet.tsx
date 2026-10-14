@@ -19,7 +19,7 @@ export const Route = createFileRoute("/wallet")({
   component: WalletPage,
 });
 
-const METHODS = ["KPay", "Wave Pay", "UPI", "USDT TRC20"];
+const METHODS = ["KPay", "Wave Pay"];
 
 function WalletPage() {
   const s = useStore();
@@ -29,6 +29,8 @@ function WalletPage() {
   const [method, setMethod] = useState(METHODS[0]);
   const [acct, setAcct] = useState("");
   const [selectedAccount, setSelectedAccount] = useState("");
+  const [receiptImage, setReceiptImage] = useState("");
+  const [referenceLast5, setReferenceLast5] = useState("");
   const [editingAccounts, setEditingAccounts] = useState(false);
   const [accountDraft, setAccountDraft] = useState(s.paymentAccounts);
   const [filter, setFilter] = useState<"all" | "deposit" | "withdraw" | "game">("all");
@@ -43,7 +45,11 @@ function WalletPage() {
     const minimum = open === "deposit" ? 5000 : 10000;
     if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
     const paymentAccount = selectedAccount || acct;
-    if (open === "deposit") { s.deposit(n, method, paymentAccount); toast.success(`Deposit request for ${money(n)} submitted for review`); }
+    if (open === "deposit") {
+      if (!receiptImage && !/^\\d{5}$/.test(referenceLast5)) return toast.error("Upload a receipt or enter the last 5 reference digits");
+      s.deposit(n, method, paymentAccount, receiptImage, referenceLast5);
+      toast.success(`Deposit request for ${money(n)} submitted for review`);
+    }
     else {
       if (paymentAccount.length < 6) return toast.error("Select or enter your account number");
       if (!s.withdraw(n, method, paymentAccount)) return toast.error("Insufficient balance");
@@ -89,10 +95,15 @@ function WalletPage() {
         <div className="space-y-3">
           {open === "deposit" ? (
             <>
-            {(s.paymentAccounts.kpayPhone || s.paymentAccounts.wavePhone || s.paymentAccounts.qrCode) && <div className="rounded-xl border border-primary/20 bg-primary/5 p-3"><p className="text-xs font-bold uppercase tracking-wider text-primary">Transfer to</p><div className="mt-2 flex flex-col gap-2 text-sm">{s.paymentAccounts.kpayPhone && <p><span className="font-semibold">KPay:</span> {s.paymentAccounts.kpayPhone} · {s.paymentAccounts.kpayName}</p>}{s.paymentAccounts.wavePhone && <p><span className="font-semibold">Wave Pay:</span> {s.paymentAccounts.wavePhone} · {s.paymentAccounts.waveName}</p>}{s.paymentAccounts.qrCode && <img src={s.paymentAccounts.qrCode} alt="Admin deposit QR code" className="mt-1 max-h-40 rounded-lg object-contain" />}</div><p className="mt-2 text-xs text-muted-foreground">Send the amount first, then submit your request below for manual review.</p></div>}
             <div className="grid grid-cols-2 gap-2">{METHODS.map((m) => (
               <button key={m} onClick={() => setMethod(m)} className={`rounded-lg py-2 text-sm font-semibold ${method === m ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>{m}</button>
-            ))}            </div>
+            ))}</div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+              <p className="font-semibold">{method} transfer account</p>
+              <p className="mt-1 text-muted-foreground">{method === "KPay" ? (s.paymentAccounts.kpayPhone ? `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` : "Admin has not configured a KPay account") : (s.paymentAccounts.wavePhone ? `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` : "Admin has not configured a Wave Pay account")}</p>
+            </div>
+            <label className="block text-sm font-medium">Transfer receipt <span className="text-muted-foreground">(optional if reference is provided)</span><input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setReceiptImage(String(reader.result)); reader.readAsDataURL(file); }} className="mt-1 block w-full text-xs" /></label>
+            <input inputMode="numeric" maxLength={5} value={referenceLast5} onChange={(e) => setReferenceLast5(e.target.value.replace(/\\D/g, "").slice(0, 5))} placeholder="Last 5 transaction digits (optional)" className={inputCls} />
             </>
           ) : (
             <>
@@ -106,7 +117,6 @@ function WalletPage() {
             <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>
           ))}</div>
           <button className={btnPrimary} onClick={submit}>{open === "deposit" ? "Deposit now" : "Withdraw now"}</button>
-          <p className="text-center text-xs text-muted-foreground">Simulation only — no real payment is processed.</p>
         </div>
       </BottomSheet>
     </AppShell>
