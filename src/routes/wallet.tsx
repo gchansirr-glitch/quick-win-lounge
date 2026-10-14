@@ -28,6 +28,7 @@ function WalletPage() {
   const [amt, setAmt] = useState("");
   const [method, setMethod] = useState(METHODS[0]);
   const [acct, setAcct] = useState("");
+  const [acctName, setAcctName] = useState("");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [receiptImage, setReceiptImage] = useState("");
   const [referenceLast5, setReferenceLast5] = useState("");
@@ -47,16 +48,16 @@ function WalletPage() {
     if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
     const paymentAccount = selectedAccount || acct;
     if (open === "deposit") {
-      if (!receiptImage && !/^\\d{5}$/.test(referenceLast5)) return toast.error("Upload a receipt or enter the last 5 reference digits");
-      s.deposit(n, method, paymentAccount, receiptImage, referenceLast5);
+      if (!receiptImage && !/^\d{5}$/.test(referenceLast5)) return toast.error("Upload a receipt or enter the last 5 reference digits");
+      s.deposit(n, method, paymentAccount, acctName, receiptImage, referenceLast5);
       toast.success(`Deposit request for ${money(n)} submitted for review`);
     }
     else {
       if (paymentAccount.length < 6) return toast.error("Select or enter your account number");
-      if (!s.withdraw(n, method, paymentAccount)) return toast.error("Insufficient balance");
+      if (!s.withdraw(n, method, paymentAccount, acctName)) return toast.error("Insufficient balance");
       toast.success(`Withdrawal request for ${money(n)} submitted for review`);
     }
-    setAmt(""); setReceiptImage(""); setReferenceLast5(""); setDepositStep(1); setOpen(null);
+    setAmt(""); setAcct(""); setAcctName(""); setReceiptImage(""); setReferenceLast5(""); setDepositStep(1); setOpen(null);
   };
 
   return (
@@ -100,14 +101,14 @@ function WalletPage() {
               {depositStep === 1 ? <>
                 <div className="grid grid-cols-2 gap-2">{METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} className={`rounded-lg py-2 text-sm font-semibold ${method === m ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>{m}</button>)}</div>
                 <p className="text-sm font-semibold">Your sending account</p>
-                <div className="grid grid-cols-2 gap-2"><input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder={`${method} phone number`} className={inputCls} /><input value={method === "KPay" ? s.paymentAccounts.kpayName : s.paymentAccounts.waveName} readOnly placeholder="Account name" className={inputCls} /></div>
-                {(method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone) && <button onClick={() => { const phone = method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone; setAcct(phone); setSelectedAccount(phone); }} className="text-left text-xs text-primary">Use saved {method} account</button>}
+                <div className="grid grid-cols-2 gap-2"><input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder={`Your ${method} phone number`} className={inputCls} /><input value={acctName} onChange={(e) => setAcctName(e.target.value)} placeholder="Your account name" className={inputCls} /></div>
+                {(method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone) && <button onClick={() => { const phone = method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone; setAcct(phone); setAcctName(method === "KPay" ? s.paymentAccounts.kpayName : s.paymentAccounts.waveName); setSelectedAccount(phone); }} className="text-left text-xs text-primary">Use saved {method} account</button>}
                 <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\\D/g, ""))} placeholder="Amount (min MMK 5,000)" className={inputCls} />
                 <div className="grid grid-cols-4 gap-2">{[5000, 10000, 20000, 50000].map((v) => <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>)}</div>
                 <button className={btnPrimary} onClick={() => { const n = Number(amt); if (!n || n < 5000) return toast.error("Minimum deposit is MMK 5,000"); if (acct.length < 6) return toast.error("Enter your sending phone number"); setDepositStep(2); }}>Continue to transfer details</button>
               </> : <>
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm"><p className="font-semibold">Send {money(Number(amt))} to admin {method}</p><p className="mt-1 text-muted-foreground">{method === "KPay" ? (s.paymentAccounts.kpayPhone ? `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` : "Admin has not configured a KPay account") : (s.paymentAccounts.wavePhone ? `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` : "Admin has not configured a Wave Pay account")}</p></div>
-                <label className="block text-sm font-medium">Transfer receipt <span className="text-muted-foreground">(optional if reference is provided)</span><input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setReceiptImage(String(reader.result)); reader.readAsDataURL(file); }} className="mt-1 block w-full text-xs" /></label>
+                <label className="block cursor-pointer rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-4 text-sm font-semibold text-primary hover:bg-primary/10">Upload transfer receipt <span className="block text-xs font-normal text-muted-foreground">Optional when you provide the last 5 digits</span><input type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setReceiptImage(String(reader.result)); reader.readAsDataURL(file); }} className="sr-only" />{receiptImage && <span className="mt-2 block text-xs text-win-green">Receipt attached</span>}</label>
                 <input inputMode="numeric" maxLength={5} value={referenceLast5} onChange={(e) => setReferenceLast5(e.target.value.replace(/\\D/g, "").slice(0, 5))} placeholder="Last 5 transaction digits (optional)" className={inputCls} />
                 <div className="grid grid-cols-2 gap-2"><button className="rounded-xl bg-secondary py-3 font-semibold" onClick={() => setDepositStep(1)}>Back</button><button className={btnPrimary} onClick={submit}>Confirm Deposit Request</button></div>
               </>}
@@ -116,7 +117,7 @@ function WalletPage() {
             <>
               <p className="text-sm text-muted-foreground">Withdrawable: {money(s.balance)}</p>
               {(s.paymentAccounts.kpayPhone || s.paymentAccounts.wavePhone) && <div className="grid gap-2"><p className="text-xs font-semibold text-muted-foreground">Select a saved account</p>{[s.paymentAccounts.kpayPhone && { method: "KPay", value: s.paymentAccounts.kpayPhone, label: `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` }, s.paymentAccounts.wavePhone && { method: "Wave Pay", value: s.paymentAccounts.wavePhone, label: `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` }].filter(Boolean).map((a) => a && <button key={a.method} onClick={() => { setMethod(a.method); setSelectedAccount(a.value); setAcct(a.value); }} className={`rounded-lg border px-3 py-2 text-left text-sm ${selectedAccount === a.value ? "border-primary bg-primary/10" : "border-border bg-background"}`}><span className="font-semibold">{a.method}</span><span className="block text-xs text-muted-foreground">{a.label}</span></button>)}</div>}
-              <input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder="Bank / wallet account number" className={inputCls} />
+              <div className="grid grid-cols-2 gap-2"><input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder="Your KPay/Wave phone number" className={inputCls} /><input value={acctName} onChange={(e) => setAcctName(e.target.value)} placeholder="Your account name" className={inputCls} /></div>
             </>
           )}
           {open === "withdraw" && <>

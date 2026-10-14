@@ -3,7 +3,7 @@ import type { MarketId, Side } from "./market";
 type GameKind = MarketId;
 
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
-export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
+export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type UserRole = "user" | "sub-admin" | "super-admin";
 export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
@@ -38,8 +38,8 @@ type Ctx = State & {
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
   savePaymentAccounts: (accounts: PaymentAccount) => void;
-  deposit: (amt: number, method: string, account?: string, receiptImage?: string, referenceLast5?: string) => void;
-  withdraw: (amt: number, method: string, account: string) => boolean;
+  deposit: (amt: number, method: string, account?: string, accountName?: string, receiptImage?: string, referenceLast5?: string) => void;
+  withdraw: (amt: number, method: string, account: string, accountName?: string) => boolean;
   reviewRequest: (id: string, status: "approved" | "rejected") => void;
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
   settle: (kind: GameKind, dur: number, period: number, result: Side, calc: (b: Bet) => number) => number;
@@ -84,10 +84,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
-    deposit: (amt, method, account, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
-    withdraw: (amt, method, account) => {
+    deposit: (amt, method, account, accountName, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, accountName, userEmail: p.user?.email, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
+    withdraw: (amt, method, account, accountName) => {
       if (amt > s.balance) return false;
-      setS((p) => ({ ...p, requests: [{ id: uid(), type: "withdraw", amount: amt, method, account, status: "pending", at: Date.now() }, ...p.requests] }));
+      setS((p) => ({ ...p, requests: [{ id: uid(), type: "withdraw", amount: amt, method, account, accountName, userEmail: p.user?.email, status: "pending", at: Date.now() }, ...p.requests] }));
       return true;
     },
     reviewRequest: (id, status) => setS((p) => {
