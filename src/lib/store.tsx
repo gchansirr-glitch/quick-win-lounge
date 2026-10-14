@@ -5,12 +5,15 @@ type GameKind = MarketId;
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
-export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean };
+export type UserRole = "user" | "sub-admin" | "super-admin";
+export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
+export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean; role: UserRole };
 export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
 
 type State = {
   user: User | null;
   registeredUsers: User[];
+  subAdminEmails: string[];
   paymentAccounts: PaymentAccount;
   balance: number;
   vault: number;
@@ -24,7 +27,7 @@ type State = {
   requests: CashRequest[];
 };
 
-const initial: State = { user: null, registeredUsers: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [] };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [] };
 const KEY = "tp-lottery-v1";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -44,6 +47,8 @@ type Ctx = State & {
   checkIn: () => number | null;
   redeem: (code: string) => number | null;
   moveVault: (amt: number, toVault: boolean) => boolean;
+  appointSubAdmin: (email: string) => boolean;
+  removeSubAdmin: (email: string) => void;
 };
 
 const C = createContext<Ctx | null>(null);
@@ -62,11 +67,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const api: Ctx = {
     ...s, ready,
     login: (email) => setS((p) => {
-      const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === email.toLowerCase());
-      const account = existing ?? { email, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: email.toLowerCase() === "acagaming75@gmail.com" };
-      return p.user?.email === email ? p : { ...initial, registeredUsers: existing ? p.registeredUsers : [...p.registeredUsers, account], paymentAccounts: p.paymentAccounts, user: account, balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")] };
+      const normalized = email.trim().toLowerCase();
+      const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
+      const role: UserRole = normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user";
+      const account = existing ? { ...existing, email: normalized, role, isAdmin: role !== "user" } : { email: normalized, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
+      return p.user?.email === normalized ? p : { ...initial, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account, balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")] };
     }),
     logout: () => setS((p) => ({ ...p, user: null })),
+    appointSubAdmin: (email) => {
+      const normalized = email.trim().toLowerCase();
+      if (!normalized || normalized === SUPER_ADMIN_EMAIL || s.user?.role !== "super-admin") return false;
+      setS((p) => ({ ...p, subAdminEmails: p.subAdminEmails.includes(normalized) ? p.subAdminEmails : [...p.subAdminEmails, normalized], registeredUsers: p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? { ...u, role: "sub-admin", isAdmin: true } : u) }));
+      return true;
+    },
+    removeSubAdmin: (email) => setS((p) => s.user?.role === "super-admin" ? ({ ...p, subAdminEmails: p.subAdminEmails.filter((e) => e !== email.toLowerCase()), registeredUsers: p.registeredUsers.map((u) => u.email.toLowerCase() === email.toLowerCase() ? { ...u, role: "user", isAdmin: false } : u) }) : p),
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
