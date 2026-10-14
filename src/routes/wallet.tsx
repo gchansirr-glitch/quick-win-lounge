@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, ArrowUpRight } from "lucide-react";
+import { Plus, ArrowUpRight, Pencil } from "lucide-react";
 import { z } from "zod";
 import { AppShell } from "@/components/AppShell";
 import { BottomSheet, btnPrimary, inputCls } from "@/components/Sheet";
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/wallet")({
   component: WalletPage,
 });
 
-const METHODS = ["KBZ Pay", "Wave Pay", "UPI", "USDT TRC20"];
+const METHODS = ["KPay", "Wave Pay", "UPI", "USDT TRC20"];
 
 function WalletPage() {
   const s = useStore();
@@ -28,6 +28,9 @@ function WalletPage() {
   const [amt, setAmt] = useState("");
   const [method, setMethod] = useState(METHODS[0]);
   const [acct, setAcct] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [editingAccounts, setEditingAccounts] = useState(false);
+  const [accountDraft, setAccountDraft] = useState(s.paymentAccounts);
   const [filter, setFilter] = useState<"all" | "deposit" | "withdraw" | "game">("all");
   useEffect(() => { if (action) setOpen(action); }, [action]);
 
@@ -39,10 +42,11 @@ function WalletPage() {
     const n = Number(amt);
     const minimum = open === "deposit" ? 5000 : 10000;
     if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
-    if (open === "deposit") { s.deposit(n, method); toast.success(`Deposit request for ${money(n)} submitted for review`); }
+    const paymentAccount = selectedAccount || acct;
+    if (open === "deposit") { s.deposit(n, method, paymentAccount); toast.success(`Deposit request for ${money(n)} submitted for review`); }
     else {
-      if (acct.length < 6) return toast.error("Enter your account number");
-      if (!s.withdraw(n, method, acct)) return toast.error("Insufficient balance");
+      if (paymentAccount.length < 6) return toast.error("Select or enter your account number");
+      if (!s.withdraw(n, method, paymentAccount)) return toast.error("Insufficient balance");
       toast.success(`Withdrawal request for ${money(n)} submitted for review`);
     }
     setAmt(""); setOpen(null);
@@ -56,6 +60,18 @@ function WalletPage() {
           <p className="font-display text-4xl font-bold">{money(s.balance)}</p>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs opacity-90"><span>Total deposit: {money(dep)}</span><span className="text-right">Total withdraw: {money(wd)}</span></div>
         </div>
+        <section className="rounded-2xl bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div><h2 className="font-bold">My payment accounts</h2><p className="text-xs text-muted-foreground">Save KPay or Wave Pay details for faster requests.</p></div>
+            <button onClick={() => { setAccountDraft(s.paymentAccounts); setEditingAccounts((v) => !v); }} className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-2 text-xs font-semibold"><Pencil className="h-3.5 w-3.5" />{editingAccounts ? "Close" : "Edit"}</button>
+          </div>
+          {!editingAccounts && <div className="mt-3 grid gap-2 text-sm"><p><span className="font-semibold">KPay:</span> {s.paymentAccounts.kpayPhone ? `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` : "Not added"}</p><p><span className="font-semibold">Wave Pay:</span> {s.paymentAccounts.wavePhone ? `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` : "Not added"}</p></div>}
+          {editingAccounts && <div className="mt-3 grid gap-2">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">KPay</p><div className="grid grid-cols-2 gap-2"><input value={accountDraft.kpayPhone} onChange={(e) => setAccountDraft({ ...accountDraft, kpayPhone: e.target.value })} placeholder="Phone number" className={inputCls} /><input value={accountDraft.kpayName} onChange={(e) => setAccountDraft({ ...accountDraft, kpayName: e.target.value })} placeholder="Account name" className={inputCls} /></div>
+            <p className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Wave Pay</p><div className="grid grid-cols-2 gap-2"><input value={accountDraft.wavePhone} onChange={(e) => setAccountDraft({ ...accountDraft, wavePhone: e.target.value })} placeholder="Phone number" className={inputCls} /><input value={accountDraft.waveName} onChange={(e) => setAccountDraft({ ...accountDraft, waveName: e.target.value })} placeholder="Account name" className={inputCls} /></div>
+            <button onClick={() => { s.savePaymentAccounts(accountDraft); setEditingAccounts(false); toast.success("Payment accounts saved"); }} className={btnPrimary}>Save accounts</button>
+          </div>}
+        </section>
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setOpen("deposit")} className="flex flex-col items-center gap-1 rounded-2xl bg-card py-4 font-semibold"><Plus className="h-6 w-6 text-primary" />Deposit</button>
           <button onClick={() => setOpen("withdraw")} className="flex flex-col items-center gap-1 rounded-2xl bg-card py-4 font-semibold"><ArrowUpRight className="h-6 w-6 text-primary" />Withdraw</button>
@@ -81,7 +97,8 @@ function WalletPage() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">Withdrawable: {money(s.balance)}</p>
-              <input value={acct} onChange={(e) => setAcct(e.target.value)} placeholder="Bank / wallet account number" className={inputCls} />
+              {(s.paymentAccounts.kpayPhone || s.paymentAccounts.wavePhone) && <div className="grid gap-2"><p className="text-xs font-semibold text-muted-foreground">Select a saved account</p>{[s.paymentAccounts.kpayPhone && { method: "KPay", value: s.paymentAccounts.kpayPhone, label: `${s.paymentAccounts.kpayPhone} · ${s.paymentAccounts.kpayName}` }, s.paymentAccounts.wavePhone && { method: "Wave Pay", value: s.paymentAccounts.wavePhone, label: `${s.paymentAccounts.wavePhone} · ${s.paymentAccounts.waveName}` }].filter(Boolean).map((a) => a && <button key={a.method} onClick={() => { setMethod(a.method); setSelectedAccount(a.value); setAcct(a.value); }} className={`rounded-lg border px-3 py-2 text-left text-sm ${selectedAccount === a.value ? "border-primary bg-primary/10" : "border-border bg-background"}`}><span className="font-semibold">{a.method}</span><span className="block text-xs text-muted-foreground">{a.label}</span></button>)}</div>}
+              <input value={acct} onChange={(e) => { setAcct(e.target.value); setSelectedAccount(""); }} placeholder="Bank / wallet account number" className={inputCls} />
             </>
           )}
           <input inputMode="numeric" value={amt} onChange={(e) => setAmt(e.target.value.replace(/\D/g, ""))} placeholder={`Amount (min MMK ${open === "deposit" ? "5,000" : "10,000"})`} className={inputCls} />

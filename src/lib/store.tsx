@@ -35,7 +35,7 @@ type Ctx = State & {
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
   savePaymentAccounts: (accounts: PaymentAccount) => void;
-  deposit: (amt: number, method: string) => void;
+  deposit: (amt: number, method: string, account?: string) => void;
   withdraw: (amt: number, method: string, account: string) => boolean;
   reviewRequest: (id: string, status: "approved" | "rejected") => void;
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
@@ -70,7 +70,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
-    deposit: (amt, method) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, status: "pending", at: Date.now() }, ...p.requests] })),
+    deposit: (amt, method, account) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, status: "pending", at: Date.now() }, ...p.requests] })),
     withdraw: (amt, method, account) => {
       if (amt > s.balance) return false;
       setS((p) => ({ ...p, requests: [{ id: uid(), type: "withdraw", amount: amt, method, account, status: "pending", at: Date.now() }, ...p.requests] }));
