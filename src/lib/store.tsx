@@ -25,15 +25,19 @@ type State = {
   marketOverride: Side | null;
   marketOverrides: Partial<Record<MarketId, Side>>;
   requests: CashRequest[];
+  profiles: Record<string, Pick<State, "balance" | "vault" | "txs" | "bets" | "lastCheckIn" | "streak" | "redeemed" | "requests">>;
+  persistSession: boolean;
 };
 
-const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [] };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true };
 const KEY = "tp-lottery-v1";
+const SESSION_KEY = "tp-lottery-session-v1";
+const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string) => void;
+  login: (email: string, remember?: boolean) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -57,23 +61,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initial);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    try { const raw = localStorage.getItem(KEY); if (raw) setS({ ...initial, ...JSON.parse(raw) }); } catch {}
+    try {
+      const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
+      if (raw) setS({ ...initial, ...JSON.parse(raw) });
+    } catch {}
     setReady(true);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem(KEY, JSON.stringify(s)); }, [s, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const serialized = JSON.stringify(s);
+    if (s.persistSession) localStorage.setItem(KEY, serialized);
+    else localStorage.removeItem(KEY);
+    if (s.user) sessionStorage.setItem(SESSION_KEY, serialized);
+  }, [s, ready]);
 
   const tx = (type: Tx["type"], amount: number, note: string): Tx => ({ id: uid(), type, amount, note, at: Date.now() });
 
   const api: Ctx = {
     ...s, ready,
-    login: (email) => setS((p) => {
+    login: (email, remember = true) => setS((p) => {
       const normalized = email.trim().toLowerCase();
       const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
       const role: UserRole = normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user";
       const account = existing ? { ...existing, email: normalized, role, isAdmin: role !== "user" } : { email: normalized, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
-      return p.user?.email === normalized ? p : { ...initial, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account, balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")] };
+      const profiles = { ...p.profiles };
+      if (p.user) profiles[p.user.email] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
+      const saved = profiles[normalized];
+      const firstLogin = !existing && !saved;
+      const profile = saved ?? { balance: 1000, vault: 0, txs: firstLogin ? [tx("bonus", 1000, "Welcome bonus")] : [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
+      const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
+      if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      return next;
     }),
-    logout: () => setS((p) => ({ ...p, user: null })),
+    logout: () => setS((p) => {
+      if (!p.user) return p;
+      const profiles = { ...p.profiles, [p.user.email]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
+      sessionStorage.removeItem(SESSION_KEY);
+      return { ...p, profiles, user: null };
+    }),
     appointSubAdmin: (email) => {
       const normalized = email.trim().toLowerCase();
       if (!normalized || normalized === SUPER_ADMIN_EMAIL || s.user?.role !== "super-admin") return false;

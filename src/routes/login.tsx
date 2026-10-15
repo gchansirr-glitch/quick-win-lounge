@@ -24,13 +24,14 @@ function Login() {
   const [pw2, setPw2] = useState("");
   const [invite, setInvite] = useState("");
   const [show, setShow] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) return toast.error("Enter a valid email address");
     if (pw.length < 6) return toast.error("Password must be at least 6 characters");
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
-    login(email.trim().toLowerCase());
+    login(email.trim().toLowerCase(), remember);
     toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
     nav({ to: "/" });
   };
@@ -57,6 +58,7 @@ function Login() {
               <button type="button" onClick={() => setShow(!show)} aria-label="Toggle password" className="absolute right-3 top-3 text-muted-foreground">{show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
             </div>
           </label>
+          {mode === "login" && <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="h-4 w-4 accent-primary" />Remember me on this device</label>}
           {mode === "register" && (<>
             <input type={show ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="Confirm password" className={inputCls} />
             <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Invite code (optional)" className={inputCls} />
