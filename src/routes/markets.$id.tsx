@@ -13,9 +13,9 @@ export const Route = createFileRoute("/markets/$id")({
     return { id: m.id, name: m.name, tag: m.tag };
   },
   head: ({ loaderData }) => ({ meta: loaderData ? [
-    { title: `${loaderData.name} (${loaderData.tag}) — TP LOTTERY` },
+    { title: `${loaderData.name} (${loaderData.tag}) — Trade X` },
     { name: "description", content: `Predict whether ${loaderData.name} closes Up or Down each ${loaderData.tag} round.` },
-    { property: "og:title", content: `${loaderData.name} — TP LOTTERY` },
+    { property: "og:title", content: `${loaderData.name} — Trade X` },
     { property: "og:description", content: `Up/Down prediction market with ${loaderData.tag} rounds.` },
   ] : [{ title: "Market not found" }, { name: "robots", content: "noindex" }] }),
   component: MarketDetail,
@@ -45,13 +45,13 @@ function MarketDetail() {
         <div className="flex items-center gap-3">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-red shadow-red"><Icon className="h-6 w-6 text-primary-foreground" /></div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs"><span className="font-bold">{m.symbol}</span><span className="flex items-center gap-1 text-win-green"><CircleDot className="size-2.5 fill-current" />Live</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">Demo</span></div>
+            <div className="flex items-center gap-2 text-xs"><span className="font-bold">{m.symbol}</span><span className="flex items-center gap-1 text-win-green"><CircleDot className="size-2.5 fill-current" />Live</span></div>
             <p className="font-display text-3xl font-bold tabular-nums">${fmtPrice(st.price)}</p>
             <p className={`text-sm font-semibold tabular-nums ${diff >= 0 ? "text-win-green" : "text-win-red"}`}>{diff >= 0 ? "▲" : "▼"} {fmtPrice(Math.abs(diff))} vs target</p>
           </div>
           <div className="relative ml-auto grid h-16 w-16 shrink-0 place-items-center">
             <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90"><circle cx="18" cy="18" r="16" fill="none" stroke="var(--secondary)" strokeWidth="3" /><circle cx="18" cy="18" r="16" fill="none" stroke={st.locked ? "var(--primary)" : "var(--gold)"} strokeWidth="3" strokeDasharray={`${pct} 100`} pathLength={100} strokeLinecap="round" /></svg>
-            <span className="text-[10px] text-muted-foreground">Closes in</span><span className={`text-sm font-bold tabular-nums ${st.left < 10 ? "text-primary" : "text-gold"}`}>{fmtClock(st.left)}</span><span className="text-[10px] font-mono text-muted-foreground">{roundLabel(m, st.period)}</span>
+            <span className={`text-sm font-bold tabular-nums ${st.left < 10 ? "text-primary" : "text-gold"}`}>{fmtClock(st.left)}</span>
           </div>
         </div>
 
@@ -70,7 +70,7 @@ function MarketDetail() {
         <div className="grid grid-cols-3 border-b border-white/10">
           {(["position", "mine", "history"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={`border-b-2 py-3 text-xs font-bold ${tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}>{t === "position" ? "Position" : t === "mine" ? "My History" : "Game History"}{t === "position" && <span className="ml-1 rounded-full bg-white/10 px-1.5">{s.bets.filter((b) => !b.settled && b.kind === m.id).length}</span>}</button>)}
         </div>
-        {tab === "position" ? <MyPositions marketId={m.id} /> : tab === "mine" ? <MyPositions marketId={m.id} /> : (
+        {tab === "position" ? <MyPositions marketId={m.id} activeOnly /> : tab === "mine" ? <MyPositions marketId={m.id} /> : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
             {history.map((p) => {
               const r = resultOf(m, p);

@@ -9,9 +9,9 @@ import banner2 from "@/assets/banner-2.jpg";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [
-    { title: "TP LOTTERY — Home" },
+    { title: "Trade X — Home" },
     { name: "description", content: "Predict Up or Down on live markets, claim bonuses and manage your wallet." },
-    { property: "og:title", content: "TP LOTTERY — Home" },
+    { property: "og:title", content: "Trade X — Home" },
     { property: "og:description", content: "Up/Down prediction markets with 30s, 1m and 5m rounds." },
   ] }),
   component: Home,
@@ -48,7 +48,7 @@ function Home() {
 
         <div className="flex items-center gap-2 overflow-hidden rounded-full bg-card px-3 py-2 text-sm">
           <Megaphone className="h-4 w-4 shrink-0 text-primary" />
-          <div className="overflow-hidden"><p className="animate-marquee whitespace-nowrap">Welcome to TP LOTTERY! Use gift code TPWELCOME for a free bonus · Daily sign-in rewards now live · Invite friends and earn commission</p></div>
+          <div className="overflow-hidden"><p className="animate-marquee whitespace-nowrap">Welcome to Trade X! Use gift code TPWELCOME for a free bonus · Daily sign-in rewards now live · Invite friends and earn commission</p></div>
         </div>
 
         <div className="rounded-2xl bg-gradient-red p-4 shadow-red text-primary-foreground">

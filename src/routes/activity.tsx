@@ -8,9 +8,9 @@ import { btnPrimary, inputCls } from "@/components/Sheet";
 
 export const Route = createFileRoute("/activity")({
   head: () => ({ meta: [
-    { title: "Activity & Bonuses — TP LOTTERY" },
+    { title: "Activity & Bonuses — Trade X" },
     { name: "description", content: "Claim daily sign-in rewards, bonuses and redeem gift codes." },
-    { property: "og:title", content: "Activity & Bonuses — TP LOTTERY" },
+    { property: "og:title", content: "Activity & Bonuses — Trade X" },
     { property: "og:description", content: "Daily rewards and gift codes." },
   ] }),
   component: Activity,

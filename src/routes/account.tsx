@@ -9,9 +9,9 @@ import { MyPositions } from "@/components/markets";
 
 export const Route = createFileRoute("/account")({
   head: () => ({ meta: [
-    { title: "My Account — TP LOTTERY" },
+    { title: "My Account — Trade X" },
     { name: "description", content: "Profile, VIP status, safe vault and game history." },
-    { property: "og:title", content: "My Account — TP LOTTERY" },
+    { property: "og:title", content: "My Account — Trade X" },
     { property: "og:description", content: "Profile, VIP status, safe vault and game history." },
   ] }),
   component: Account,

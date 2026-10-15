@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide-react";
 import { useStore, money } from "@/lib/store";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
-import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultOf, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
+import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
 export function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -43,8 +43,11 @@ export function MarketSettler() {
     busy.current = key;
     const m = MARKETS.find((x) => x.id === due.kind);
     if (!m) return;
-    const r = resultOf(m, due.period);
-    const won = s.settle(due.kind, due.dur, due.period, r, (b) => (b.sel === resultOf(m, b.period) ? +(b.amount * b.odds).toFixed(2) : 0));
+    const roundBets = s.bets.filter((b) => b.kind === due.kind && b.dur === due.dur && b.period === due.period);
+    const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
+    const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
+    const r = resultFor(m, due.period, upVolume, downVolume, s.marketOverride);
+    const won = s.settle(due.kind, due.dur, due.period, r, (b) => (b.sel === r ? +(b.amount * b.odds).toFixed(2) : 0));
     if (won > 0) toast.success(`${m.name} closed ${r.toUpperCase()} — you won ${money(won)}!`);
     else toast(`${m.name} closed ${r.toUpperCase()}`);
   }, [now, s]);
@@ -56,7 +59,7 @@ function OddsRow({ side, odds, p, onClick, disabled }: { side: Side; odds: numbe
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
       <div className="min-w-0">
-        <p className="font-semibold">{up ? "Up" : "Down"}</p>
+        <p className="font-semibold">{up ? "Buy Up" : "Sell Down"}</p>
         <div className="mt-1.5 h-[3px] rounded-full bg-secondary">
           <div className={`h-full rounded-full transition-all duration-500 ${up ? "bg-win-green" : "bg-win-red"}`} style={{ width: `${Math.round(p * 100)}%` }} />
         </div>
@@ -97,48 +100,44 @@ export function MarketCard({ m, now, onBet }: { m: Market; now: number; onBet: (
 
 export function PriceChart({ m, now }: { m: Market; now: number }) {
   const period = periodOf(m, now);
-  const start = period * m.dur;
   const target = targetOf(m, period);
-  const span = m.dur;
-  const pts = useMemo(() => {
-    const out: number[] = [];
-    const steps = 80;
-    for (let i = 0; i <= steps; i++) out.push(priceAt(m, now - span + (span * i) / steps));
-    return out;
-  }, [m, now, span]);
+  const { bets, marketOverride } = useStore();
+  const roundBets = bets.filter((b) => b.kind === m.id && b.dur === m.dur && b.period === period);
+  const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
+  const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
   const candles = useMemo(() => {
-    const size = 8;
-    return Array.from({ length: Math.floor(pts.length / size) }, (_, i) => {
-      const values = pts.slice(i * size, i * size + size);
-      return { open: values[0], close: values[values.length - 1], high: Math.max(...values), low: Math.min(...values), volume: 18 + ((i * 17) % 34) };
+    const end = Math.floor(now);
+    return Array.from({ length: 32 }, (_, index) => {
+      const closeTime = end - 31 + index;
+      const open = priceAt(m, closeTime - 1);
+      const close = index === 31 ? priceAt(m, now) : priceAt(m, closeTime);
+      const mid = priceAt(m, closeTime - 0.5);
+      const high = Math.max(open, close, mid);
+      const low = Math.min(open, close, mid);
+      return { open, close, high, low };
     });
-  }, [pts]);
-  const all = [...pts, target];
+  }, [m, now]);
+  const all = candles.flatMap((c) => [c.high, c.low]).concat(target);
   const min = Math.min(...all), max = Math.max(...all), pad = (max - min) * 0.15 || 1;
-  const y = (v: number) => 100 - ((v - (min - pad)) / (max - min + pad * 2)) * 100;
-  const last = pts[pts.length - 1];
-  const up = last >= target;
+  const y = (value: number) => 100 - ((value - (min - pad)) / (max - min + pad * 2)) * 100;
+  const last = candles[candles.length - 1].close;
   return (
     <div className="relative h-52 w-full">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible" aria-label="Live one-second candlestick chart" role="img">
+        {[20, 40, 60, 80].map((value) => <line key={value} x1="0" x2="100" y1={value} y2={value} stroke="var(--border)" strokeWidth="0.35" vectorEffect="non-scaling-stroke" />)}
         <line x1="0" x2="100" y1={y(target)} y2={y(target)} stroke="var(--gold)" strokeDasharray="2 2" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        {candles.map((c, i) => {
-          const x = ((i + 0.5) / candles.length) * 100;
-          const width = Math.max(1.2, 70 / candles.length);
-          const rising = c.close >= c.open;
+        {candles.map((candle, index) => {
+          const x = 2 + (index / (candles.length - 1)) * 96;
+          const rising = candle.close >= candle.open;
+          const bodyTop = Math.min(y(candle.open), y(candle.close));
+          const bodyHeight = Math.max(1.2, Math.abs(y(candle.close) - y(candle.open)));
           const color = rising ? "var(--win-green)" : "var(--win-red)";
-          const bodyTop = Math.min(y(c.open), y(c.close));
-          const bodyHeight = Math.max(1.4, Math.abs(y(c.open) - y(c.close)));
-          const volumeTop = 100 - c.volume;
-          return <g key={i}>
-            <line x1={x} x2={x} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-            <rect x={x - width / 2} y={bodyTop} width={width} height={bodyHeight} fill={color} rx="0.5" />
-            <rect x={x - width / 2} y={volumeTop} width={width} height={c.volume * 0.18} fill={color} opacity="0.45" />
-          </g>;
+          return <g key={index}><line x1={x} x2={x} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" /><rect x={x - 1.05} y={bodyTop} width="2.1" height={bodyHeight} fill={color} rx="0.25" /></g>;
         })}
       </svg>
       <span className="absolute right-0 rounded bg-gold px-1.5 text-[10px] font-bold text-background" style={{ top: `calc(${y(target)}% - 8px)` }}>TARGET</span>
-      <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${up ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
+      <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">1s</span>
+      <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${last >= target ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
     </div>
   );
 }
@@ -184,9 +183,9 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   );
 }
 
-export function MyPositions({ marketId }: { marketId?: string }) {
+export function MyPositions({ marketId, activeOnly = false }: { marketId?: string; activeOnly?: boolean }) {
   const s = useStore();
-  const list = s.bets.filter((b) => !marketId || b.kind === marketId).slice(0, 30);
+  const list = s.bets.filter((b) => (!marketId || b.kind === marketId) && (!activeOnly || !b.settled)).slice(0, 30);
   if (!list.length) return <p className="rounded-2xl bg-card p-6 text-center text-sm text-muted-foreground"><Activity className="mx-auto mb-2 h-5 w-5" />No positions yet</p>;
   return (
     <div className="space-y-2">
@@ -196,7 +195,7 @@ export function MyPositions({ marketId }: { marketId?: string }) {
           <div key={b.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-card p-3">
             <span className={`grid h-9 w-9 place-items-center rounded-full ${b.sel === "up" ? "bg-win-green/15 text-win-green" : "bg-win-red/15 text-win-red"}`}>{b.sel === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}</span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{m?.name ?? b.kind} · {b.sel.toUpperCase()} @ {b.odds?.toFixed(2)}x</p>
+              <p className="truncate text-sm font-semibold">{m?.name ?? b.kind} · {b.sel === "up" ? "Buy Up" : "Sell Down"} @ {b.odds?.toFixed(2)}x</p>
               <p className="truncate text-xs text-muted-foreground tabular-nums">{m ? roundLabel(m, b.period) : ""} · {money(b.amount)}</p>
             </div>
             <span className={`text-sm font-bold tabular-nums ${!b.settled ? "text-gold" : b.won ? "text-win-green" : "text-muted-foreground"}`}>{!b.settled ? "Open" : b.won ? `+${money(b.won)}` : "Lost"}</span>

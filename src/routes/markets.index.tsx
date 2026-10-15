@@ -6,9 +6,9 @@ import { MARKETS, type Market, type Side } from "@/lib/market";
 
 export const Route = createFileRoute("/markets/")({
   head: () => ({ meta: [
-    { title: "Prediction Markets — TP LOTTERY" },
+    { title: "Prediction Markets — Trade X" },
     { name: "description", content: "Predict Up or Down on Micro Volatx (30s), Alpha Dynamic (1m) and Prime Macro (5m)." },
-    { property: "og:title", content: "Prediction Markets — TP LOTTERY" },
+    { property: "og:title", content: "Prediction Markets — Trade X" },
     { property: "og:description", content: "Up/Down prediction markets with 30s, 1m and 5m rounds." },
   ] }),
   component: Markets,

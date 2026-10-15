@@ -3,11 +3,18 @@ import type { MarketId, Side } from "./market";
 type GameKind = MarketId;
 
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
+export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
-export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean };
+export type UserRole = "user" | "sub-admin" | "super-admin";
+export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
+export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean; role: UserRole };
+export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
 
 type State = {
   user: User | null;
+  registeredUsers: User[];
+  subAdminEmails: string[];
+  paymentAccounts: PaymentAccount;
   balance: number;
   vault: number;
   txs: Tx[];
@@ -16,25 +23,36 @@ type State = {
   streak: number;
   redeemed: string[];
   marketOverride: Side | null;
+  marketOverrides: Partial<Record<MarketId, Side>>;
+  requests: CashRequest[];
+  profiles: Record<string, Pick<State, "balance" | "vault" | "txs" | "bets" | "lastCheckIn" | "streak" | "redeemed" | "requests">>;
+  persistSession: boolean;
 };
 
-const initial: State = { user: null, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true };
 const KEY = "tp-lottery-v1";
+const SESSION_KEY = "tp-lottery-session-v1";
+const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string) => void;
+  login: (email: string, remember?: boolean) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
-  deposit: (amt: number, method: string) => void;
-  withdraw: (amt: number) => boolean;
+  setMarketDirection: (market: MarketId, side: Side | null) => void;
+  savePaymentAccounts: (accounts: PaymentAccount) => void;
+  deposit: (amt: number, method: string, account?: string, accountName?: string, receiptImage?: string, referenceLast5?: string) => void;
+  withdraw: (amt: number, method: string, account: string, accountName?: string) => boolean;
+  reviewRequest: (id: string, status: "approved" | "rejected") => void;
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
   settle: (kind: GameKind, dur: number, period: number, result: Side, calc: (b: Bet) => number) => number;
   bonus: (amt: number, note: string) => void;
   checkIn: () => number | null;
   redeem: (code: string) => number | null;
   moveVault: (amt: number, toVault: boolean) => boolean;
+  appointSubAdmin: (email: string) => boolean;
+  removeSubAdmin: (email: string) => void;
 };
 
 const C = createContext<Ctx | null>(null);
@@ -43,28 +61,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initial);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    try { const raw = localStorage.getItem(KEY); if (raw) setS({ ...initial, ...JSON.parse(raw) }); } catch {}
+    try {
+      const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
+      if (raw) setS({ ...initial, ...JSON.parse(raw) });
+    } catch {}
     setReady(true);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem(KEY, JSON.stringify(s)); }, [s, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const serialized = JSON.stringify(s);
+    if (s.persistSession) localStorage.setItem(KEY, serialized);
+    else localStorage.removeItem(KEY);
+    if (s.user) sessionStorage.setItem(SESSION_KEY, serialized);
+  }, [s, ready]);
 
   const tx = (type: Tx["type"], amount: number, note: string): Tx => ({ id: uid(), type, amount, note, at: Date.now() });
 
   const api: Ctx = {
     ...s, ready,
-    login: (email) => setS((p) => p.user?.email === email ? p : {
-      ...initial,
-      user: { email, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: email === "acagaming75@gmail.com" },
-      balance: 1000, txs: [tx("bonus", 1000, "Welcome bonus")],
+    login: (email, remember = true) => setS((p) => {
+      const normalized = email.trim().toLowerCase();
+      const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
+      const role: UserRole = normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user";
+      const account = existing ? { ...existing, email: normalized, role, isAdmin: role !== "user" } : { email: normalized, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
+      const profiles = { ...p.profiles };
+      if (p.user) profiles[p.user.email] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
+      const saved = profiles[normalized];
+      const firstLogin = !existing && !saved;
+      const profile = saved ?? { balance: 1000, vault: 0, txs: firstLogin ? [tx("bonus", 1000, "Welcome bonus")] : [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
+      const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
+      if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      return next;
     }),
-    logout: () => setS((p) => ({ ...p, user: null })),
-    setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
-    deposit: (amt, m) => setS((p) => ({ ...p, balance: p.balance + amt, txs: [tx("deposit", amt, m), ...p.txs] })),
-    withdraw: (amt) => {
-      if (amt > s.balance) return false;
-      setS((p) => ({ ...p, balance: p.balance - amt, txs: [tx("withdraw", -amt, "Bank withdrawal"), ...p.txs] }));
+    logout: () => setS((p) => {
+      if (!p.user) return p;
+      const profiles = { ...p.profiles, [p.user.email]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
+      sessionStorage.removeItem(SESSION_KEY);
+      return { ...p, profiles, user: null };
+    }),
+    appointSubAdmin: (email) => {
+      const normalized = email.trim().toLowerCase();
+      if (!normalized || normalized === SUPER_ADMIN_EMAIL || s.user?.role !== "super-admin") return false;
+      setS((p) => ({ ...p, subAdminEmails: p.subAdminEmails.includes(normalized) ? p.subAdminEmails : [...p.subAdminEmails, normalized], registeredUsers: p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? { ...u, role: "sub-admin", isAdmin: true } : u) }));
       return true;
     },
+    removeSubAdmin: (email) => setS((p) => s.user?.role === "super-admin" ? ({ ...p, subAdminEmails: p.subAdminEmails.filter((e) => e !== email.toLowerCase()), registeredUsers: p.registeredUsers.map((u) => u.email.toLowerCase() === email.toLowerCase() ? { ...u, role: "user", isAdmin: false } : u) }) : p),
+    setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
+    setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
+    savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
+    deposit: (amt, method, account, accountName, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, accountName, userEmail: p.user?.email, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
+    withdraw: (amt, method, account, accountName) => {
+      if (amt > s.balance) return false;
+      setS((p) => ({ ...p, requests: [{ id: uid(), type: "withdraw", amount: amt, method, account, accountName, userEmail: p.user?.email, status: "pending", at: Date.now() }, ...p.requests] }));
+      return true;
+    },
+    reviewRequest: (id, status) => setS((p) => {
+      const request = p.requests.find((r) => r.id === id);
+      if (!request || request.status !== "pending") return p;
+      const approved = status === "approved";
+      const delta = approved ? (request.type === "deposit" ? request.amount : -request.amount) : 0;
+      return { ...p, balance: p.balance + delta, requests: p.requests.map((r) => r.id === id ? { ...r, status } : r), txs: approved ? [tx(request.type, request.type === "deposit" ? request.amount : -request.amount, `${request.method} approved`), ...p.txs] : p.txs };
+    }),
     placeBet: (b) => {
       if (b.amount > s.balance) return false;
       setS((p) => ({ ...p, balance: p.balance - b.amount, bets: [{ ...b, id: uid(), at: Date.now() }, ...p.bets].slice(0, 200), txs: [tx("bet", -b.amount, `${b.kind === "trx" ? "TRX " : ""}Win Go bet`), ...p.txs] }));
