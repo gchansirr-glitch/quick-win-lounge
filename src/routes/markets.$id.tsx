@@ -13,9 +13,9 @@ export const Route = createFileRoute("/markets/$id")({
     return { id: m.id, name: m.name, tag: m.tag };
   },
   head: ({ loaderData }) => ({ meta: loaderData ? [
-    { title: `${loaderData.name} (${loaderData.tag}) — TP LOTTERY` },
+    { title: `${loaderData.name} (${loaderData.tag}) — Trade X` },
     { name: "description", content: `Predict whether ${loaderData.name} closes Up or Down each ${loaderData.tag} round.` },
-    { property: "og:title", content: `${loaderData.name} — TP LOTTERY` },
+    { property: "og:title", content: `${loaderData.name} — Trade X` },
     { property: "og:description", content: `Up/Down prediction market with ${loaderData.tag} rounds.` },
   ] : [{ title: "Market not found" }, { name: "robots", content: "noindex" }] }),
   component: MarketDetail,

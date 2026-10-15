@@ -7,10 +7,10 @@ import { btnPrimary, inputCls } from "@/components/Sheet";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [
-    { title: "Log in or Register — TP LOTTERY" },
-    { name: "description", content: "Sign in to TP LOTTERY with your email address." },
-    { property: "og:title", content: "Log in — TP LOTTERY" },
-    { property: "og:description", content: "Sign in to TP LOTTERY with your email address." },
+    { title: "Log in or Register — Trade X" },
+    { name: "description", content: "Sign in to Trade X with your email address." },
+    { property: "og:title", content: "Log in — Trade X" },
+    { property: "og:description", content: "Sign in to Trade X with your email address." },
   ] }),
   component: Login,
 });
@@ -39,7 +39,7 @@ function Login() {
   return (
     <div className="mx-auto min-h-screen max-w-md bg-background">
       <div className="bg-gradient-red px-6 pb-10 pt-12">
-        <h1 className="text-4xl font-bold tracking-wide text-primary-foreground">TP LOTTERY</h1>
+        <h1 className="text-4xl font-bold tracking-wide text-primary-foreground">Trade X</h1>
         <p className="mt-1 text-sm text-primary-foreground/80">{mode === "login" ? "Log in with your email address" : "Create your account"}</p>
       </div>
       <div className="-mt-5 rounded-t-3xl bg-background px-6 pt-6">

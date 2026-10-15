@@ -7,9 +7,9 @@ import { seeded } from "@/lib/market";
 
 export const Route = createFileRoute("/promotion")({
   head: () => ({ meta: [
-    { title: "Promotion & Referrals — TP LOTTERY" },
+    { title: "Promotion & Referrals — Trade X" },
     { name: "description", content: "Invite friends, track subordinates and earn agent commissions." },
-    { property: "og:title", content: "Promotion & Referrals — TP LOTTERY" },
+    { property: "og:title", content: "Promotion & Referrals — Trade X" },
     { property: "og:description", content: "Invite friends and earn commissions." },
   ] }),
   component: Promotion,

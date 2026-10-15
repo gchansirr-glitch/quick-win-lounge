@@ -11,9 +11,9 @@ import { useStore, money } from "@/lib/store";
 export const Route = createFileRoute("/wallet")({
   validateSearch: z.object({ action: z.enum(["deposit", "withdraw"]).optional() }),
   head: () => ({ meta: [
-    { title: "Wallet — TP LOTTERY" },
+    { title: "Wallet — Trade X" },
     { name: "description", content: "Check your balance, deposit, withdraw and view transaction history." },
-    { property: "og:title", content: "Wallet — TP LOTTERY" },
+    { property: "og:title", content: "Wallet — Trade X" },
     { property: "og:description", content: "Balance, deposits, withdrawals and history." },
   ] }),
   component: WalletPage,
