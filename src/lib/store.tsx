@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import type { MarketId, Side } from "./market";
 type GameKind = MarketId;
 
-export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
+export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "commission" | "vault"; amount: number; at: number; note: string };
+export type VipLevel = { level: number; name: string; wagerRequired: number; commissionPercent: number; upgradeBonus: number; monthlyBonus: number };
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type UserRole = "user" | "sub-admin" | "super-admin";
@@ -27,9 +28,12 @@ type State = {
   requests: CashRequest[];
   profiles: Record<string, Pick<State, "balance" | "vault" | "txs" | "bets" | "lastCheckIn" | "streak" | "redeemed" | "requests">>;
   persistSession: boolean;
+  vipLevels: VipLevel[];
+  referralCode: string;
+  referredCount: number;
 };
 
-const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true, vipLevels: Array.from({ length: 6 }, (_, index) => ({ level: index, name: index === 0 ? "Starter" : `VIP ${index}`, wagerRequired: index * 10000, commissionPercent: index * 0.5, upgradeBonus: index * 1000, monthlyBonus: index * 500 })), referralCode: "", referredCount: 0 };
 const KEY = "tp-lottery-v1";
 const SESSION_KEY = "tp-lottery-session-v1";
 const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
@@ -53,6 +57,7 @@ type Ctx = State & {
   moveVault: (amt: number, toVault: boolean) => boolean;
   appointSubAdmin: (email: string) => boolean;
   removeSubAdmin: (email: string) => void;
+  saveVipLevels: (levels: VipLevel[]) => void;
 };
 
 const C = createContext<Ctx | null>(null);
@@ -109,6 +114,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
+    saveVipLevels: (levels) => setS((p) => s.user?.role === "super-admin" || s.user?.role === "sub-admin" ? ({ ...p, vipLevels: levels }) : p),
     deposit: (amt, method, account, accountName, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, accountName, userEmail: p.user?.email, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
     withdraw: (amt, method, account, accountName) => {
       if (amt > s.balance) return false;

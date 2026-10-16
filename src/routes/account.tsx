@@ -24,6 +24,8 @@ function Account() {
   const [amt, setAmt] = useState("");
   const wagered = s.bets.reduce((a, b) => a + b.amount, 0);
   const vip = Math.min(10, Math.floor(wagered / 1000));
+  const vipConfig = s.vipLevels.find((level) => level.level === vip) ?? s.vipLevels[0];
+  const nextVip = s.vipLevels.find((level) => level.level > vip);
 
   const move = (to: boolean) => {
     const n = Number(amt);
@@ -53,6 +55,7 @@ function Account() {
           <p className="mt-1 text-xs opacity-80">{money(1000 - (wagered % 1000))} more wagering to VIP{Math.min(10, vip + 1)}</p>
         </div>
 
+        <div className="rounded-2xl border border-gold/30 bg-gold/5 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-gold">VIP rewards</p><p className="mt-1 font-display text-xl font-bold">{vipConfig?.name ?? `VIP${vip}`}</p></div><Crown className="size-5 text-gold" /></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><p className="text-muted-foreground">Commission</p><p className="font-bold">{vipConfig?.commissionPercent ?? 0}%</p></div><div><p className="text-muted-foreground">Upgrade bonus</p><p className="font-bold">{money(vipConfig?.upgradeBonus ?? 0)}</p></div><div><p className="text-muted-foreground">Monthly bonus</p><p className="font-bold">{money(vipConfig?.monthlyBonus ?? 0)}</p></div></div>{nextVip && <p className="mt-3 text-xs text-muted-foreground">Next: {nextVip.name} at {money(nextVip.wagerRequired)} wagering</p>}</div>
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">Balance</p><p className="font-display text-2xl font-bold">{money(s.balance)}</p></div>
           <div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">Safe vault</p><p className="font-display text-2xl font-bold">{money(s.vault)}</p></div>
