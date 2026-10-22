@@ -56,3 +56,10 @@ export async function saveSharedAgentSettings(agentId: string, settings: { turno
   if (error) throw error;
   return data;
 }
+
+export async function getInvitedUsers(search = "") {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("get_agent_invited_users", { p_search: search.trim() || null });
+  if (error) throw error;
+  return data ?? [];
+}
