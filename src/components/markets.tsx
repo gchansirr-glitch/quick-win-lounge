@@ -154,13 +154,15 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   const st = useMarketState(bet.m, now);
   const odds = 2;
   const n = Number(amt) || 0;
+  const roundIds = useRef<Record<string, string>>({});
   const up = bet.side === "up";
   const confirm = async () => {
     if (n < 10) return toast.error("Minimum bet is ₹10");
     if (st.locked) return toast.error("Round is closing — wait for the next one");
     if (s.balance < n) return toast.error("Insufficient balance");
     try {
-      const roundId = `${bet.m.id}-${st.period}`;
+      const roundKey = `${bet.m.id}-${st.period}`;
+      const roundId = roundIds.current[roundKey] ?? (roundIds.current[roundKey] = crypto.randomUUID());
       await placeSharedBet({ roundId, marketId: bet.m.id, side: bet.side === "up" ? "UP" : "DOWN", amount: n });
       if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: n })) return toast.error("Insufficient balance");
       toast.success(`${up ? "UP" : "DOWN"} ${money(n)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
