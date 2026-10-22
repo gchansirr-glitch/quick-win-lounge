@@ -92,7 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const syncProfile = async () => {
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) return;
-      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", balance: s.balance, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", updated_at: new Date().toISOString() }, { onConflict: "id", ignoreDuplicates: true });
     };
     void syncProfile();
   }, [ready, s.user?.email, s.balance]);
