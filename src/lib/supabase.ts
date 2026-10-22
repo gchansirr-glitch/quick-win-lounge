@@ -21,3 +21,24 @@ export async function authenticate(email: string, password: string, mode: "login
 export async function signOutShared() {
   await supabase?.auth.signOut();
 }
+
+export async function placeSharedBet(input: { roundId: string; marketId: string; side: "UP" | "DOWN"; amount: number }) {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("place_bet", { p_round_id: input.roundId, p_market_id: input.marketId, p_side: input.side, p_amount: input.amount });
+  if (error) throw error;
+  return data;
+}
+
+export async function reviewSharedCashRequest(requestId: string, status: "approved" | "rejected") {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("review_cash_request", { p_request_id: requestId, p_status: status });
+  if (error) throw error;
+  return data;
+}
+
+export async function allocateSharedAgentCredit(agentId: string, amount: number) {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("allocate_agent_credit", { p_agent_id: agentId, p_amount: amount });
+  if (error) throw error;
+  return data;
+}

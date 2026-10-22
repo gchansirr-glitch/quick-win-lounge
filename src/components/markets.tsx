@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide-react";
 import { useStore, money } from "@/lib/store";
+import { placeSharedBet } from "@/lib/supabase";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
 import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
@@ -154,12 +155,19 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   const odds = 2;
   const n = Number(amt) || 0;
   const up = bet.side === "up";
-  const confirm = () => {
+  const confirm = async () => {
     if (n < 10) return toast.error("Minimum bet is ₹10");
     if (st.locked) return toast.error("Round is closing — wait for the next one");
-    if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: n })) return toast.error("Insufficient balance");
-    toast.success(`${up ? "UP" : "DOWN"} ${money(n)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
-    onClose();
+    if (s.balance < n) return toast.error("Insufficient balance");
+    try {
+      const roundId = `${bet.m.id}-${st.period}`;
+      await placeSharedBet({ roundId, marketId: bet.m.id, side: bet.side === "up" ? "UP" : "DOWN", amount: n });
+      if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: n })) return toast.error("Insufficient balance");
+      toast.success(`${up ? "UP" : "DOWN"} ${money(n)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bet could not be placed");
+    }
   };
   return (
     <BottomSheet open onClose={onClose} title={`${bet.m.name} · ${up ? "Up" : "Down"}`}>
