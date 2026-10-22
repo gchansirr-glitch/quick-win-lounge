@@ -42,3 +42,17 @@ export async function allocateSharedAgentCredit(agentId: string, amount: number)
   if (error) throw error;
   return data;
 }
+
+export async function appointSharedAgent(email: string) {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("appoint_affiliate_agent", { p_email: email });
+  if (error) throw error;
+  return data;
+}
+
+export async function saveSharedAgentSettings(agentId: string, settings: { turnover: number; deposit: number; welcome: number; creditLimit: number }) {
+  if (!supabase) throw new Error("Shared database is not configured");
+  const { data, error } = await (supabase as any).rpc("save_agent_settings", { p_agent_id: agentId, p_turnover: settings.turnover, p_deposit: settings.deposit, p_welcome: settings.welcome, p_credit_limit: settings.creditLimit });
+  if (error) throw error;
+  return data;
+}
