@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AgentRouteImport } from './routes/agent'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PromotionRouteImport } from './routes/promotion'
 import { Route as WalletRouteImport } from './routes/wallet'
@@ -37,6 +38,11 @@ const ActivityRoute = ActivityRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentRoute = AgentRouteImport.update({
+  id: '/agent',
+  path: '/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/activity': typeof ActivityRoute
   '/admin': typeof AdminRoute
+  '/agent': typeof AgentRoute
   '/login': typeof LoginRoute
   '/promotion': typeof PromotionRoute
   '/wallet': typeof WalletRoute
@@ -81,6 +88,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/activity': typeof ActivityRoute
   '/admin': typeof AdminRoute
+  '/agent': typeof AgentRoute
   '/login': typeof LoginRoute
   '/promotion': typeof PromotionRoute
   '/wallet': typeof WalletRoute
@@ -93,6 +101,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/activity': typeof ActivityRoute
   '/admin': typeof AdminRoute
+  '/agent': typeof AgentRoute
   '/login': typeof LoginRoute
   '/promotion': typeof PromotionRoute
   '/wallet': typeof WalletRoute
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/activity'
     | '/admin'
+    | '/agent'
     | '/login'
     | '/promotion'
     | '/wallet'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/activity'
     | '/admin'
+    | '/agent'
     | '/login'
     | '/promotion'
     | '/wallet'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/activity'
     | '/admin'
+    | '/agent'
     | '/login'
     | '/promotion'
     | '/wallet'
@@ -140,6 +152,7 @@ export interface RootRouteChildren {
   AccountRoute: typeof AccountRoute
   ActivityRoute: typeof ActivityRoute
   AdminRoute: typeof AdminRoute
+  AgentRoute: typeof AgentRoute
   LoginRoute: typeof LoginRoute
   PromotionRoute: typeof PromotionRoute
   WalletRoute: typeof WalletRoute
@@ -175,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agent': {
+      id: '/agent'
+      path: '/agent'
+      fullPath: '/agent'
+      preLoaderRoute: typeof AgentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -220,6 +240,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountRoute: AccountRoute,
   ActivityRoute: ActivityRoute,
   AdminRoute: AdminRoute,
+  AgentRoute: AgentRoute,
   LoginRoute: LoginRoute,
   PromotionRoute: PromotionRoute,
   WalletRoute: WalletRoute,

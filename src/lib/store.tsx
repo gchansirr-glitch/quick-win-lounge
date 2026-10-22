@@ -7,7 +7,7 @@ export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "b
 export type VipLevel = { level: number; name: string; wagerRequired: number; commissionPercent: number; upgradeBonus: number; monthlyBonus: number };
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
-export type UserRole = "user" | "sub-admin" | "super-admin";
+export type UserRole = "user" | "sub-admin" | "affiliate-agent" | "super-admin";
 export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
 export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean; role: UserRole };
 export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
@@ -67,18 +67,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initial);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
-      if (raw) setS({ ...initial, ...JSON.parse(raw) });
-    } catch {}
-    setReady(true);
+    let channel: ReturnType<NonNullable<typeof supabase>["channel"]> | undefined;
+    const restore = async () => {
+      try {
+        const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
+        if (raw) setS({ ...initial, ...JSON.parse(raw) });
+      } catch {}
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        const authUser = data.session?.user;
+        if (authUser) {
+          const { data: profile } = await (supabase as any).from("profiles").select("*").eq("id", authUser.id).maybeSingle();
+          if (profile) setS((p) => ({ ...p, user: { email: profile.email, uid: profile.id, inviteCode: profile.referral_code ?? "", isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
+          channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
+        }
+      }
+      setReady(true);
+    };
+    void restore();
+    return () => { if (channel) void channel.unsubscribe(); };
   }, []);
   useEffect(() => {
     if (!ready || !s.user || !supabase) return;
     const syncProfile = async () => {
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) return;
-      await supabase.from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", balance: s.balance, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", balance: s.balance, updated_at: new Date().toISOString() }, { onConflict: "id" });
     };
     void syncProfile();
   }, [ready, s.user?.email, s.balance]);
