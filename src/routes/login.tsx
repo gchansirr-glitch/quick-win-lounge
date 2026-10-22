@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { authenticate } from "@/lib/supabase";
 import { btnPrimary, inputCls } from "@/components/Sheet";
 
 export const Route = createFileRoute("/login")({
@@ -26,14 +27,19 @@ function Login() {
   const [show, setShow] = useState(false);
   const [remember, setRemember] = useState(true);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) return toast.error("Enter a valid email address");
     if (pw.length < 6) return toast.error("Password must be at least 6 characters");
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
-    login(email.trim().toLowerCase(), remember);
-    toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
-    nav({ to: "/" });
+    try {
+      const account = await authenticate(email.trim().toLowerCase(), pw, mode);
+      login(account.email ?? email.trim().toLowerCase(), remember, account.id);
+      toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
+      nav({ to: "/" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to authenticate");
+    }
   };
 
   return (

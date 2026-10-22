@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { MarketId, Side } from "./market";
+import { supabase, signOutShared } from "./supabase";
 type GameKind = MarketId;
 
 export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "commission" | "vault"; amount: number; at: number; note: string };
@@ -41,7 +42,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string, remember?: boolean) => void;
+  login: (email: string, remember?: boolean, authId?: string) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -73,6 +74,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
   useEffect(() => {
+    if (!ready || !s.user || !supabase) return;
+    const syncProfile = async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) return;
+      await supabase.from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", balance: s.balance, updated_at: new Date().toISOString() }, { onConflict: "id" });
+    };
+    void syncProfile();
+  }, [ready, s.user?.email, s.balance]);
+  useEffect(() => {
     if (!ready) return;
     const serialized = JSON.stringify(s);
     if (s.persistSession) localStorage.setItem(KEY, serialized);
@@ -102,6 +112,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!p.user) return p;
       const profiles = { ...p.profiles, [p.user.email]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
       sessionStorage.removeItem(SESSION_KEY);
+      void signOutShared();
       return { ...p, profiles, user: null };
     }),
     appointSubAdmin: (email) => {
