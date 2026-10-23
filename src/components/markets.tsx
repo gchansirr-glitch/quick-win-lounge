@@ -151,21 +151,23 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   const s = useStore();
   const now = useNow(250);
   const [amt, setAmt] = useState("100");
+  const [quantity, setQuantity] = useState(1);
   const st = useMarketState(bet.m, now);
   const odds = 2;
-  const n = Number(amt) || 0;
+  const baseAmount = Number(amt) || 0;
+  const totalAmount = baseAmount * quantity;
   const roundIds = useRef<Record<string, string>>({});
   const up = bet.side === "up";
   const confirm = async () => {
-    if (n < 10) return toast.error("Minimum bet is ₹10");
+    if (baseAmount < 10) return toast.error("Minimum base bet is MMK 10");
     if (st.locked) return toast.error("Round is closing — wait for the next one");
-    if (s.balance < n) return toast.error("Insufficient balance");
+    if (s.balance < totalAmount) return toast.error(`Insufficient balance. You need ${money(totalAmount)}.`);
     try {
       const roundKey = `${bet.m.id}-${st.period}`;
       const roundId = roundIds.current[roundKey] ?? (roundIds.current[roundKey] = crypto.randomUUID());
-      await placeSharedBet({ roundId, marketId: bet.m.id, side: bet.side === "up" ? "UP" : "DOWN", amount: n });
-      if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: n })) return toast.error("Insufficient balance");
-      toast.success(`${up ? "UP" : "DOWN"} ${money(n)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
+      await placeSharedBet({ roundId, marketId: bet.m.id, side: bet.side === "up" ? "UP" : "DOWN", amount: totalAmount });
+      if (!s.placeBet({ kind: bet.m.id, dur: bet.m.dur, period: st.period, sel: bet.side, odds, target: st.target, amount: totalAmount })) return toast.error("Insufficient balance");
+      toast.success(`${up ? "UP" : "DOWN"} ${money(totalAmount)} @ ${odds.toFixed(2)}x on ${bet.m.name}`);
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Bet could not be placed");
@@ -179,15 +181,27 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
           <div className="rounded-xl bg-secondary p-2"><p className="text-muted-foreground">Payout</p><p className={`font-semibold tabular-nums ${up ? "text-win-green" : "text-win-red"}`}>{odds.toFixed(2)}x</p></div>
           <div className="rounded-xl bg-secondary p-2"><p className="text-muted-foreground">Closes in</p><p className="font-semibold tabular-nums text-gold">{fmtClock(st.left)}</p></div>
         </div>
-        <input inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.]/g, ""))} className={`${inputCls} text-center font-display text-3xl font-bold`} />
-        <div className="grid grid-cols-5 gap-2">{[10, 50, 100, 500].map((v) => (
-          <button key={v} onClick={() => setAmt(String(v))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">{v}</button>
-        ))}<button onClick={() => setAmt(String(Math.floor(s.balance)))} className="rounded-lg bg-secondary py-2 text-sm font-semibold">Max</button></div>
-        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Potential payout</span><span className="font-bold tabular-nums">{money(n * odds)}</span></div>
-        <button onClick={confirm} disabled={st.locked} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 ${up ? "bg-win-green" : "bg-win-red"}`}>
-          {up ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}{up ? "Buy Up" : "Sell Down"}
-        </button>
-        <p className="text-center text-xs text-muted-foreground">Balance {money(s.balance)}</p>
+        <div className="rounded-2xl border border-border bg-secondary/60 p-4">
+          <label htmlFor="bet-base-amount" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Base amount</label>
+          <input id="bet-base-amount" inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d.]/g, ""))} className={`${inputCls} mt-2 text-center font-display text-3xl font-bold`} />
+          <div className="mt-3 grid grid-cols-4 gap-2">{[100, 1000, 10000, 100000].map((v) => (
+            <button key={v} onClick={() => setAmt(String(v))} className={`rounded-xl border py-2.5 text-xs font-bold transition active:scale-95 ${baseAmount === v ? "border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "border-border bg-background hover:border-primary/50"}`}>{v.toLocaleString()}</button>
+          ))}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-secondary/60 p-4">
+          <div className="flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quantity multiplier</span><span className="font-mono text-sm font-bold text-primary">X{quantity}</span></div>
+          <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] gap-2">
+            <button aria-label="Decrease quantity" onClick={() => setQuantity((value) => Math.max(1, value - 1))} className="rounded-xl bg-background text-xl font-bold transition hover:bg-primary hover:text-primary-foreground">−</button>
+            <div className="grid place-items-center rounded-xl bg-background font-mono text-xl font-bold">{quantity}</div>
+            <button aria-label="Increase quantity" onClick={() => setQuantity((value) => Math.min(100, value + 1))} className="rounded-xl bg-background text-xl font-bold transition hover:bg-primary hover:text-primary-foreground">+</button>
+          </div>
+          <div className="mt-3 grid grid-cols-6 gap-1.5">{[1, 5, 10, 20, 50, 100].map((value) => (
+            <button key={value} onClick={() => setQuantity(value)} className={`rounded-lg border py-2 text-xs font-bold transition active:scale-95 ${quantity === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:border-primary/50"}`}>X{value}</button>
+          ))}</div>
+        </div>
+        <div className="flex items-center justify-between border-t border-border pt-3 text-sm"><span className="text-muted-foreground">Potential payout · {odds.toFixed(2)}x</span><span className="font-bold tabular-nums">{money(totalAmount * odds)}</span></div>
+        <div className={`rounded-2xl border p-4 ${s.balance < totalAmount ? "border-destructive/50 bg-destructive/10" : "border-primary/30 bg-primary/10"}`}><div className="flex items-center justify-between"><span className="text-sm font-semibold">Total Amount</span><span className="font-display text-xl font-bold tabular-nums">{money(totalAmount)}</span></div><p className="mt-1 text-xs text-muted-foreground">Base {money(baseAmount)} × X{quantity} · Balance {money(s.balance)}</p>{s.balance < totalAmount && <p className="mt-2 text-xs font-semibold text-destructive">Insufficient balance for this bet.</p>}</div>
+        <div className="grid grid-cols-2 gap-3"><button onClick={onClose} className="rounded-xl border border-border bg-secondary py-3.5 font-bold transition hover:bg-secondary/80">Cancel</button><button onClick={confirm} disabled={st.locked || totalAmount < 10 || s.balance < totalAmount} className={`flex items-center justify-center gap-2 rounded-xl py-3.5 font-bold text-primary-foreground transition active:scale-[0.98] disabled:opacity-50 ${up ? "bg-win-green" : "bg-win-red"}`}>{up ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}{up ? "Buy Up" : "Sell Down"}</button></div>
       </div>
     </BottomSheet>
   );
