@@ -22,6 +22,7 @@ function Account() {
   const s = useStore();
   const nav = useNavigate();
   const [sheet, setSheet] = useState<"vault" | "history" | "settings" | null>(null);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [amt, setAmt] = useState("");
   const [userCode, setUserCode] = useState("");
   useEffect(() => { if (!supabase || !s.user?.uid) return; void (async () => { const { data } = await (supabase as any).from("profiles").select("user_code").eq("id", s.user!.uid).maybeSingle(); setUserCode(data?.user_code ?? ""); })(); }, [s.user?.uid]);
@@ -96,8 +97,11 @@ function Account() {
           {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }].map(({ i: I, l }) => (
             <button key={l} onClick={() => toast("Available in the full version")} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><I className="h-5 w-5 text-primary" />{l}</button>
           ))}
-          <div className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3"><Globe className="h-5 w-5 text-primary" /><span>Language: English</span></div>
+          <button onClick={() => setLanguageOpen(true)} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><Globe className="h-5 w-5 text-primary" /><span>Language: {s.lang === "my" ? "မြန်မာစာ" : "English"}</span><ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" /></button>
         </div>
+      </BottomSheet>
+      <BottomSheet open={languageOpen} onClose={() => setLanguageOpen(false)} title="Select language">
+        <div className="space-y-2">{[{ code: "en" as const, label: "🇬🇧 English" }, { code: "my" as const, label: "🇲🇲 မြန်မာစာ" }].map((option) => <button key={option.code} onClick={() => { s.setLanguage(option.code); setLanguageOpen(false); toast.success(option.code === "my" ? "ဘာသာစကား ပြောင်းပြီးပါပြီ" : "Language updated"); }} className={`flex w-full items-center justify-between rounded-xl border px-4 py-4 text-left font-semibold ${s.lang === option.code ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary"}`}><span>{option.label}</span>{s.lang === option.code && <span className="text-xs">Selected</span>}</button>)}</div>
       </BottomSheet>
     </AppShell>
   );

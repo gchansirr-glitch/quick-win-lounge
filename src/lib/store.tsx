@@ -32,9 +32,10 @@ type State = {
   vipLevels: VipLevel[];
   referralCode: string;
   referredCount: number;
+  lang: "en" | "my";
 };
 
-const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true, vipLevels: Array.from({ length: 6 }, (_, index) => ({ level: index, name: index === 0 ? "Starter" : `VIP ${index}`, wagerRequired: index * 10000, commissionPercent: index * 0.5, upgradeBonus: index * 1000, monthlyBonus: index * 500 })), referralCode: "", referredCount: 0 };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true, vipLevels: Array.from({ length: 6 }, (_, index) => ({ level: index, name: index === 0 ? "Starter" : `VIP ${index}`, wagerRequired: index * 10000, commissionPercent: index * 0.5, upgradeBonus: index * 1000, monthlyBonus: index * 500 })), referralCode: "", referredCount: 0, lang: "en" };
 const KEY = "tp-lottery-v1";
 const SESSION_KEY = "tp-lottery-session-v1";
 const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
@@ -59,6 +60,7 @@ type Ctx = State & {
   appointSubAdmin: (email: string) => boolean;
   removeSubAdmin: (email: string) => void;
   saveVipLevels: (levels: VipLevel[]) => void;
+  setLanguage: (lang: "en" | "my") => void;
 };
 
 const C = createContext<Ctx | null>(null);
@@ -140,6 +142,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
     saveVipLevels: (levels) => setS((p) => s.user?.role === "super-admin" || s.user?.role === "sub-admin" ? ({ ...p, vipLevels: levels }) : p),
+    setLanguage: (lang) => setS((p) => ({ ...p, lang })),
+
     deposit: (amt, method, account, accountName, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, accountName, userEmail: p.user?.email, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
     withdraw: (amt, method, account, accountName) => {
       if (amt > s.balance) return false;

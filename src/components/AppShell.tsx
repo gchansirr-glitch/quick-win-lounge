@@ -13,7 +13,8 @@ const tabs = [
 ] as const;
 
 export function AppShell({ children, title, back, nav = true }: { children: ReactNode; title?: string; back?: boolean; nav?: boolean }) {
-  const { user, ready, balance } = useStore();
+  const { user, ready, balance, lang } = useStore();
+  const labels = lang === "my" ? { Home: "ပင်မ", Activity: "မှတ်တမ်း", Promotion: "ပရိုမိုးရှင်း", Wallet: "ပိုက်ဆံအိတ်", Account: "အကောင့်" } : { Home: "Home", Activity: "Activity", Promotion: "Promotion", Wallet: "Wallet", Account: "Account" };
   const navigate = useNavigate();
   useEffect(() => { if (ready && !user) navigate({ to: "/login" }); }, [ready, user, navigate]);
   if (!ready || !user) return <div className="min-h-screen bg-background" />;
@@ -39,7 +40,7 @@ export function AppShell({ children, title, back, nav = true }: { children: Reac
             {tabs.map(({ to, label, icon: Icon }) => (
               <li key={to}>
                 <Link to={to} activeOptions={{ exact: true }} className="flex flex-col items-center gap-1 py-2.5 text-[11px] text-muted-foreground data-[status=active]:text-primary">
-                  <Icon className="h-5 w-5" />{label}
+                  <Icon className="h-5 w-5" />{labels[label as keyof typeof labels]}
                 </Link>
               </li>
             ))}
