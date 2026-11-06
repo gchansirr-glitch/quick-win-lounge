@@ -20,6 +20,19 @@ async function getServerEntry(): Promise<ServerEntry> {
 
 // h3 swallows in-handler throws into a normal 500 Response with body
 // {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
+const telegramSecurityHeaders = {
+  "Content-Security-Policy": "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org telegram:",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+};
+
+function withTelegramHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  Object.entries(telegramSecurityHeaders).forEach(([name, value]) => headers.set(name, value));
+  headers.delete("X-Frame-Options");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
@@ -49,7 +62,7 @@ export default {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withTelegramHeaders(await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
