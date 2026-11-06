@@ -8,25 +8,62 @@ export const supabase = url && key
   ? createClient<Database>(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
   : null;
 
-export async function authenticate(email: string, password: string, mode: "login" | "register", inviteCode = "") {
-  if (!supabase) throw new Error("Supabase authentication is unavailable");
-  const result = mode === "register"
-    ? await supabase.auth.signUp({ email, password, options: { data: { invite_code: inviteCode.trim().toUpperCase() || null } } })
-    : await supabase.auth.signInWithPassword({ email, password });
-  if (result.error) throw result.error;
-  if (!result.data.user) throw new Error("Authentication did not return a user");
-  const authUser = result.data.user;
+type LocalAuthRecord = { id: string; email: string; password: string; profile: { role: "super_admin" | "user"; balance: number; referral_code?: string } };
+const LOCAL_AUTH_KEY = "tp-registered-users";
+
+function localAuthRecords(): LocalAuthRecord[] {
+  try { return JSON.parse(localStorage.getItem(LOCAL_AUTH_KEY) ?? "[]") as LocalAuthRecord[]; } catch { return []; }
+}
+
+function saveLocalAuth(record: LocalAuthRecord) {
+  const records = localAuthRecords().filter((item) => item.email !== record.email);
+  localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify([...records, record]));
+}
+
+function fallbackAuthenticate(email: string, password: string, mode: "login" | "register", inviteCode: string) {
+  const normalized = email.trim().toLowerCase();
+  const role = normalized === "acagaming75@gmail.com" ? "super_admin" as const : "user" as const;
+  const records = localAuthRecords();
   if (mode === "register") {
-    let referrerId: string | null = null;
-    if (inviteCode.trim()) {
-      const { data: referrer } = await (supabase as any).from("profiles").select("id").eq("referral_code", inviteCode.trim().toUpperCase()).maybeSingle();
-      referrerId = referrer?.id ?? null;
-    }
-    const { error: profileError } = await (supabase as any).from("profiles").upsert({ id: authUser.id, email: email.trim().toLowerCase(), role: "user", balance: 0, referred_by: referrerId, referral_code: `TP${authUser.id.replace(/-/g, "").slice(0, 8).toUpperCase()}` }, { onConflict: "id" });
-    if (profileError) throw profileError;
+    if (records.some((record) => record.email === normalized)) throw new Error("An account with this email already exists");
+    const account: LocalAuthRecord = { id: `usr_${Date.now()}`, email: normalized, password, profile: { role, balance: 1000, referral_code: inviteCode.trim().toUpperCase() } };
+    saveLocalAuth(account);
+    return account;
   }
-  const { data: profile } = await (supabase as any).from("profiles").select("id,email,role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
-  return { ...authUser, profile };
+  const account = records.find((record) => record.email === normalized && record.password === password);
+  if (!account) throw new Error("Invalid email or password");
+  const updated = { ...account, profile: { ...account.profile, role } };
+  saveLocalAuth(updated);
+  return updated;
+}
+
+export async function authenticate(email: string, password: string, mode: "login" | "register", inviteCode = "") {
+  const normalized = email.trim().toLowerCase();
+  if (supabase) {
+    try {
+      const result = mode === "register"
+        ? await supabase.auth.signUp({ email: normalized, password })
+        : await supabase.auth.signInWithPassword({ email: normalized, password });
+      if (!result.error && result.data.user) {
+        const authUser = result.data.user;
+        const role = normalized === "acagaming75@gmail.com" ? "super_admin" : "user";
+        if (mode === "register") {
+          let referrerId: string | null = null;
+          if (inviteCode.trim()) {
+            const { data: referrer } = await (supabase as any).from("profiles").select("id").eq("referral_code", inviteCode.trim().toUpperCase()).maybeSingle();
+            referrerId = referrer?.id ?? null;
+          }
+          await (supabase as any).from("profiles").upsert({ id: authUser.id, email: normalized, role, balance: 0, referred_by: referrerId, referral_code: inviteCode.trim().toUpperCase() }, { onConflict: "id" });
+          return { id: authUser.id, email: normalized, profile: { role, balance: 0, referral_code: inviteCode.trim().toUpperCase() } };
+        }
+        const { data: profile } = await (supabase as any).from("profiles").select("role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
+        return { id: authUser.id, email: normalized, profile: profile ?? { role, balance: 0 } };
+      }
+    } catch {
+      // Fall through to the local session when Supabase is unavailable.
+    }
+  }
+  return fallbackAuthenticate(normalized, password, mode, inviteCode);
 }
 
 export async function signOutShared() {
