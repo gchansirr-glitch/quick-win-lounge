@@ -8,14 +8,25 @@ export const supabase = url && key
   ? createClient<Database>(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
   : null;
 
-export async function authenticate(email: string, password: string, mode: "login" | "register") {
-  if (!supabase) throw new Error("Shared authentication is not configured");
+export async function authenticate(email: string, password: string, mode: "login" | "register", inviteCode = "") {
+  if (!supabase) throw new Error("Supabase authentication is unavailable");
   const result = mode === "register"
-    ? await supabase.auth.signUp({ email, password })
+    ? await supabase.auth.signUp({ email, password, options: { data: { invite_code: inviteCode.trim().toUpperCase() || null } } })
     : await supabase.auth.signInWithPassword({ email, password });
   if (result.error) throw result.error;
   if (!result.data.user) throw new Error("Authentication did not return a user");
-  return result.data.user;
+  const authUser = result.data.user;
+  if (mode === "register") {
+    let referrerId: string | null = null;
+    if (inviteCode.trim()) {
+      const { data: referrer } = await (supabase as any).from("profiles").select("id").eq("referral_code", inviteCode.trim().toUpperCase()).maybeSingle();
+      referrerId = referrer?.id ?? null;
+    }
+    const { error: profileError } = await (supabase as any).from("profiles").upsert({ id: authUser.id, email: email.trim().toLowerCase(), role: "user", balance: 0, referred_by: referrerId, referral_code: `TP${authUser.id.replace(/-/g, "").slice(0, 8).toUpperCase()}` }, { onConflict: "id" });
+    if (profileError) throw profileError;
+  }
+  const { data: profile } = await (supabase as any).from("profiles").select("id,email,role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
+  return { ...authUser, profile };
 }
 
 export async function signOutShared() {

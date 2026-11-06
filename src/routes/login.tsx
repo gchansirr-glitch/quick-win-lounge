@@ -33,8 +33,8 @@ function Login() {
     if (pw.length < 6) return toast.error("Password must be at least 6 characters");
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
     try {
-      const account = await authenticate(email.trim().toLowerCase(), pw, mode);
-      login(account.email ?? email.trim().toLowerCase(), remember, account.id);
+      const account = await authenticate(email.trim().toLowerCase(), pw, mode, invite);
+      login(account.email ?? email.trim().toLowerCase(), remember, account.id, account.profile);
       toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
       nav({ to: "/" });
     } catch (error) {
@@ -70,7 +70,6 @@ function Login() {
             <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="Invite code (optional)" className={inputCls} />
           </>)}
           <button className={btnPrimary}>{mode === "login" ? "Log in" : "Register"}</button>
-          <p className="text-center text-xs text-muted-foreground">Frontend demo — no real money. Use any email and password.</p>
         </form>
       </div>
     </div>

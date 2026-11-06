@@ -43,7 +43,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string, remember?: boolean, authId?: string) => void;
+  login: (email: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string }) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -110,16 +110,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api: Ctx = {
     ...s, ready,
-    login: (email, remember = true) => setS((p) => {
+    login: (email, remember = true, authId, authProfile) => setS((p) => {
       const normalized = email.trim().toLowerCase();
       const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
-      const role: UserRole = normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user";
-      const account = existing ? { ...existing, email: normalized, role, isAdmin: role !== "user" } : { email: normalized, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
+      const profileRole = authProfile?.role === "super_admin" ? "super-admin" : authProfile?.role === "sub_admin" ? "sub-admin" : authProfile?.role === "affiliate_agent" ? "affiliate-agent" : undefined;
+      const role: UserRole = profileRole ?? (normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user");
+      const account = existing ? { ...existing, email: normalized, uid: authId ?? existing.uid, role, isAdmin: role !== "user" } : { email: normalized, uid: authId ?? String(100000 + (Math.random() * 900000) | 0), inviteCode: authProfile?.referral_code ?? uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
       const profiles = { ...p.profiles };
       if (p.user) profiles[p.user.email] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
       const saved = profiles[normalized];
       const firstLogin = !existing && !saved;
-      const profile = saved ?? { balance: 1000, vault: 0, txs: firstLogin ? [tx("bonus", 1000, "Welcome bonus")] : [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
+      const profile = saved ?? { balance: Number(authProfile?.balance ?? 0), vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
       const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
       if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       return next;
