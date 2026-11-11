@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { Copy, Users, Crown, Link2, CalendarDays, ChevronRight, Headphones, ScrollText, WalletCards, BarChart3, Search, ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useStore, money } from "@/lib/store";
-import { seeded } from "@/lib/market";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 
@@ -33,13 +32,25 @@ function Promotion() {
   const [subordinateSearch, setSubordinateSearch] = useState("");
   const [subordinateTier, setSubordinateTier] = useState("all");
   const [subordinates, setSubordinates] = useState<Array<{ user_id: string; user_code: string; registered_at: string; balance: number; total_deposit: number; total_bet_volume: number; total_commission: number }>>([]);
-  useEffect(() => { if (!supabase || !user?.uid) return; void (async () => { const { data } = await (supabase as any).from("profiles").select("user_code").eq("id", user.uid).maybeSingle(); setUserCode(data?.user_code ?? ""); })(); }, [user?.uid]);
-  useEffect(() => { if (!supabase || !user?.uid || view !== "subordinates") return; void (async () => { const { data } = await (supabase as any).rpc("get_agent_invited_users", { p_search: subordinateSearch.trim() || null }); setSubordinates(data ?? []); })(); }, [user?.uid, view, subordinateSearch]);
-  const code = user!.inviteCode;
+  useEffect(() => {
+    if (!supabase || !user?.uid) return;
+    void (async () => {
+      const { data } = await (supabase as any).from("profiles").select("user_code,referral_code").eq("id", user.uid).maybeSingle();
+      setUserCode(data?.user_code ?? "");
+    })();
+  }, [user?.uid]);
+  useEffect(() => {
+    if (!supabase || !user?.uid) return;
+    void (async () => {
+      const { data } = await (supabase as any).rpc("get_agent_invited_users", { p_search: view === "subordinates" ? subordinateSearch.trim() || null : null });
+      if (data) setSubordinates(data);
+    })();
+  }, [user?.uid, view, subordinateSearch]);
+  const code = user?.inviteCode || "";
   const link = typeof window !== "undefined" ? `${window.location.origin}/login?invite=${code}` : "";
-  const seed = seeded(code);
-  const direct = seed % 9, team = direct + (seed % 23);
-  const commission = (seed % 5000) / 10;
+  const direct = subordinates.length;
+  const team = 0;
+  const commission = subordinates.reduce((total, player) => total + Number(player.total_commission || 0), 0);
   const copy = (t: string) => { navigator.clipboard?.writeText(t); toast.success("Copied"); };
   const cur = [...tiers].reverse().find((t) => team >= t.need)!;
 
@@ -59,30 +70,28 @@ function Promotion() {
           <div className="grid grid-cols-2 gap-3"><div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">ငွေသွင်းဦးရေ</p><p className="mt-1 font-display text-2xl font-bold">{subordinates.filter((item) => item.total_deposit > 0).length}</p></div><div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">ငွေသွင်းပမာဏ</p><p className="mt-1 font-display text-lg font-bold">{money(subordinates.reduce((sum, item) => sum + Number(item.total_deposit), 0))}</p></div><div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">လောင်းကစားသူ</p><p className="mt-1 font-display text-2xl font-bold">{subordinates.filter((item) => item.total_bet_volume > 0).length}</p></div><div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">စုစုပေါင်းလောင်းကြေး</p><p className="mt-1 font-display text-lg font-bold">{money(subordinates.reduce((sum, item) => sum + Number(item.total_bet_volume), 0))}</p></div></div>
           <section className="space-y-3"><h2 className="font-display text-xl font-bold">Invited Users</h2>{subordinates.length ? subordinates.map((item) => <article key={item.user_id} className="rounded-2xl border border-border bg-card p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><p className="font-mono font-bold">UID: {item.user_code}</p><button onClick={() => { navigator.clipboard?.writeText(item.user_code); toast.success("UID copied"); }} aria-label="Copy UID"><Copy className="h-3.5 w-3.5 text-muted-foreground" /></button></div><p className="mt-1 text-xs text-muted-foreground">တိုက်ရိုက် · {new Date(item.registered_at).toLocaleString()}</p></div><p className="font-bold">{money(Number(item.balance))}</p></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><p className="text-muted-foreground">ငွေသွင်း</p><p className="mt-1 font-semibold">{money(Number(item.total_deposit))}</p></div><div><p className="text-muted-foreground">လောင်းကြေး</p><p className="mt-1 font-semibold">{money(Number(item.total_bet_volume))}</p></div><div><p className="text-muted-foreground">ကော်မရှင်</p><p className="mt-1 font-semibold text-primary">{money(Number(item.total_commission))}</p></div></div></article>) : <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No subordinate data found.</div>}</section>
         </> : <>
-        <div className="rounded-2xl bg-gradient-red p-5 text-center shadow-red text-primary-foreground">
-          <p className="text-sm opacity-80">Yesterday's total commission</p>
-          <p className="font-display text-4xl font-bold">{money(commission)}</p>
-          <p className="text-xs opacity-80">Upgrade the level to increase commission income</p>
+        <div className="rounded-3xl bg-gradient-red p-5 text-primary-foreground shadow-red">
+          <span className="inline-flex rounded-full border border-white/25 bg-black/10 px-3 py-1 text-xs font-semibold">Yesterday&apos;s total commission</span>
+          <p className="mt-3 font-display text-4xl font-extrabold">{money(commission)}</p>
+          <p className="mt-1 text-xs text-primary-foreground/80">Upgrade your level to increase commission income</p>
         </div>
 
-        <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4"><p className="text-xs font-bold uppercase tracking-wider text-primary">Your User ID</p><div className="mt-1 flex items-center justify-between gap-3"><p className="font-mono text-2xl font-bold tracking-widest">{userCode || "—"}</p><button onClick={() => { navigator.clipboard?.writeText(userCode); toast.success("User ID copied"); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Copy</button></div><p className="mt-1 text-xs text-muted-foreground">Share your invitation code to grow your direct subordinates.</p></div>
-
-        <div className="grid grid-cols-2 gap-3">
-          {[["Direct subordinates", direct], ["Team subordinates", team], ["New today", seed % 3], ["First deposits", seed % 4]].map(([l, v]) => (
-            <div key={l} className="rounded-2xl bg-card p-4"><Users className="mb-1 h-4 w-4 text-primary" /><p className="font-display text-2xl font-bold">{v}</p><p className="text-xs text-muted-foreground">{l}</p></div>
-          ))}
-        </div>
-
-        <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <div className="min-w-0"><p className="text-xs text-muted-foreground">Invitation code</p><p className="font-mono text-xl font-bold tracking-widest">{code}</p></div>
-            <button onClick={() => copy(code)} className="flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"><Copy className="h-4 w-4" />Copy</button>
+        <section className="overflow-hidden rounded-2xl border border-border bg-card" aria-label="Subordinate statistics">
+          <div className="grid grid-cols-2">
+            {[{ title: "Direct subordinates", count: direct }, { title: "Team subordinates", count: team }].map((column) => (
+              <div key={column.title} className="min-w-0 border-r border-border last:border-r-0">
+                <h2 className="min-h-12 bg-primary/15 px-2 py-3 text-center text-xs font-bold text-primary">{column.title}</h2>
+                {(() => { const players = column.title === "Direct subordinates" ? subordinates : []; const depositors = players.filter((player) => Number(player.total_deposit) > 0); return [["Number of register", players.length], ["Deposit number", depositors.length], ["Deposit amount", money(players.reduce((sum, player) => sum + Number(player.total_deposit), 0))], ["First deposit", depositors.length]].map(([label, value]) => <div key={String(label)} className="flex min-h-14 flex-col justify-center border-t border-border px-2 py-2"><span className="text-[10px] leading-tight text-muted-foreground">{label}</span><span className="mt-1 truncate text-xs font-bold">{value}</span></div>); })()}
+              </div>
+            ))}
           </div>
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-            <div className="min-w-0"><p className="text-xs text-muted-foreground">Referral link</p><p className="truncate text-sm">{link}</p></div>
-            <button onClick={() => copy(link)} className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-2 text-sm font-semibold"><Link2 className="h-4 w-4" />Copy</button>
-          </div>
-        </div>
+        </section>
+
+        <button onClick={() => { navigator.clipboard?.writeText(link); toast.success("Invitation link copied!"); }} className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-4 text-sm font-extrabold tracking-wide text-primary-foreground shadow-lg shadow-primary/20"><Link2 className="h-5 w-5" />INVITATION LINK</button>
+
+        <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4"><p className="text-xs font-bold uppercase tracking-wider text-primary">Your User ID</p><div className="mt-1 flex items-center justify-between gap-3"><p className="font-mono text-2xl font-bold tracking-widest">{userCode || "Loading…"}</p><button onClick={() => { if (!userCode) return; navigator.clipboard?.writeText(userCode); toast.success("User ID copied"); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Copy</button></div><p className="mt-1 text-xs text-muted-foreground">Share your invitation code to grow your direct subordinates.</p></div>
+
+
 
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2"><Crown className="h-5 w-5 text-gold" /><h2 className="text-lg font-bold">Agent tiers</h2></div>
@@ -93,8 +102,9 @@ function Promotion() {
           ))}
         </div>
         <div className="rounded-2xl border border-border bg-card p-2">
-          {[{ label: "အောက်လက်ငယ်သားဒေတာ", sub: "Subordinate Data", icon: CalendarDays, action: () => setView("subordinates") }, { label: "ကော်မရှင်အသေးစိတ်", sub: "Commission Details", icon: WalletCards, action: () => setView("commission") }, { label: "ဖိတ်ခေါ်စည်းကမ်း", sub: "Invitation Rules", icon: ScrollText, action: () => setView("rules") }, { label: "အေးဂျင့်လိုင်းဖောက်သည်ဝန်ဆောင်မှု", sub: "Agent Customer Service", icon: Headphones, action: () => setView("service") }, { label: "ကော်မရှင်အချိုး", sub: "Commission Rebate Rates", icon: BarChart3, action: () => setView("rates") }].map((item) => <button key={item.sub} onClick={item.action} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-secondary"><item.icon className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{item.label}</span><span className="block text-xs text-muted-foreground">{item.sub}</span></span><ChevronRight className="h-4 w-4 text-muted-foreground" /></button>)}
+          {[{ label: "Partner rewards", sub: "Grow your agency", icon: Crown, action: () => setView("rates") }, { label: "Copy invitation code", sub: code || "Invitation code not available", icon: Copy, action: () => copy(code) }, { label: "Subordinate data", sub: "Direct and team members", icon: CalendarDays, action: () => setView("subordinates") }, { label: "Commission detail", sub: "Daily and weekly earnings", icon: WalletCards, action: () => setView("commission") }, { label: "Invitation rules", sub: "Program terms and eligibility", icon: ScrollText, action: () => setView("rules") }, { label: "Agent line customer service", sub: "Contact agent support", icon: Headphones, action: () => setView("service") }, { label: "Rebate ratio / Commission rates", sub: "View L1–L6 rates", icon: BarChart3, action: () => setView("rates") }].map((item) => <button key={item.label} onClick={item.action} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-secondary"><item.icon className="h-5 w-5 text-primary" /><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{item.label}</span><span className="block truncate text-xs text-muted-foreground">{item.sub}</span></span><ChevronRight className="h-4 w-4 text-muted-foreground" /></button>)}
         </div>
+        <section className="rounded-2xl border border-border bg-card p-4"><h2 className="mb-3 font-display text-lg font-bold">Promotion data</h2><div className="grid grid-cols-2 gap-3">{[["This Week", money(commission)], ["Total commission", money(commission)], ["Direct Subordinate", direct], ["Total number in team", team]].map(([label, value]) => <div key={String(label)} className="rounded-xl bg-secondary p-3"><p className="text-[11px] text-muted-foreground">{label}</p><p className="mt-1 truncate text-sm font-bold">{value}</p></div>)}</div></section>
         </>}
       </div>
     </AppShell>
