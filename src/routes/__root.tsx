@@ -84,7 +84,6 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
-        <script src="https://telegram.org/js/telegram-web-app.js" />
       </head>
       <body>
         {children}
@@ -96,8 +95,19 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function TelegramWebAppBootstrap() {
   useEffect(() => {
-    window.Telegram?.WebApp?.ready();
-    window.Telegram?.WebApp?.expand();
+    const initializeTelegram = () => {
+      window.Telegram?.WebApp?.ready();
+      window.Telegram?.WebApp?.expand();
+    };
+    if (window.Telegram?.WebApp) {
+      initializeTelegram();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-web-app.js";
+    script.async = true;
+    script.onload = initializeTelegram;
+    document.head.appendChild(script);
   }, []);
   return null;
 }
