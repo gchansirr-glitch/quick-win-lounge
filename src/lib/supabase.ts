@@ -41,9 +41,10 @@ export async function authenticate(email: string, password: string, mode: "login
   const normalized = email.trim().toLowerCase();
   if (supabase) {
     try {
+      const isEmail = /^\S+@\S+\.\S+$/.test(normalized);
       const result = mode === "register"
-        ? await supabase.auth.signUp({ email: normalized, password })
-        : await supabase.auth.signInWithPassword({ email: normalized, password });
+        ? isEmail ? await supabase.auth.signUp({ email: normalized, password }) : await supabase.auth.signUp({ phone: normalized, password })
+        : isEmail ? await supabase.auth.signInWithPassword({ email: normalized, password }) : await supabase.auth.signInWithPassword({ phone: normalized, password });
       if (!result.error && result.data.user) {
         const authUser = result.data.user;
         const role = normalized === "acagaming75@gmail.com" ? "super_admin" : "user";
@@ -53,8 +54,9 @@ export async function authenticate(email: string, password: string, mode: "login
             const { data: referrer } = await (supabase as any).from("profiles").select("id").eq("referral_code", inviteCode.trim().toUpperCase()).maybeSingle();
             referrerId = referrer?.id ?? null;
           }
-          await (supabase as any).from("profiles").upsert({ id: authUser.id, email: normalized, role, balance: 0, referred_by: referrerId, referral_code: inviteCode.trim().toUpperCase() }, { onConflict: "id" });
-          return { id: authUser.id, email: normalized, profile: { role, balance: 0, referral_code: inviteCode.trim().toUpperCase() } };
+          const ownInviteCode = `TP${authUser.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+          await (supabase as any).from("profiles").upsert({ id: authUser.id, email: isEmail ? normalized : `${normalized}@phone.local`, role, balance: 0, referred_by: referrerId, referral_code: ownInviteCode }, { onConflict: "id" });
+          return { id: authUser.id, email: isEmail ? normalized : normalized, profile: { role, balance: 0, referral_code: ownInviteCode } };
         }
         const { data: profile } = await (supabase as any).from("profiles").select("role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
         return { id: authUser.id, email: normalized, profile: profile ?? { role, balance: 0 } };
