@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Crown, Copy, Vault, History, Settings, LogOut, ChevronRight, Bell, Lock, Globe } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { BottomSheet, btnPrimary, inputCls } from "@/components/Sheet";
 import { useStore, money } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import { MyPositions } from "@/components/markets";
 
 export const Route = createFileRoute("/account")({
@@ -21,9 +22,14 @@ function Account() {
   const s = useStore();
   const nav = useNavigate();
   const [sheet, setSheet] = useState<"vault" | "history" | "settings" | null>(null);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [amt, setAmt] = useState("");
+  const [userCode, setUserCode] = useState("");
+  useEffect(() => { if (!supabase || !s.user?.uid) return; void (async () => { const { data } = await (supabase as any).from("profiles").select("user_code").eq("id", s.user!.uid).maybeSingle(); setUserCode(data?.user_code ?? ""); })(); }, [s.user?.uid]);
   const wagered = s.bets.reduce((a, b) => a + b.amount, 0);
   const vip = Math.min(10, Math.floor(wagered / 1000));
+  const vipConfig = s.vipLevels.find((level) => level.level === vip) ?? s.vipLevels[0];
+  const nextVip = s.vipLevels.find((level) => level.level > vip);
 
   const move = (to: boolean) => {
     const n = Number(amt);
@@ -46,13 +52,14 @@ function Account() {
             <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-background/25 font-display text-2xl font-bold">{s.user!.email.slice(-2)}</div>
             <div className="min-w-0">
               <p className="flex items-center gap-2 truncate font-bold">{s.user!.email}<span className="flex shrink-0 items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-xs text-background"><Crown className="h-3 w-3" />VIP{vip}</span></p>
-              <button onClick={() => { navigator.clipboard?.writeText(s.user!.uid); toast.success("UID copied"); }} className="flex items-center gap-1 text-sm opacity-90">UID {s.user!.uid}<Copy className="h-3 w-3" /></button>
+              <button onClick={() => { navigator.clipboard?.writeText(userCode); toast.success("User ID copied"); }} className="flex items-center gap-1 text-sm opacity-90">User ID {userCode || "—"}<Copy className="h-3 w-3" /></button>
             </div>
           </div>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-background/25"><div className="h-full bg-gold" style={{ width: `${(wagered % 1000) / 10}%` }} /></div>
           <p className="mt-1 text-xs opacity-80">{money(1000 - (wagered % 1000))} more wagering to VIP{Math.min(10, vip + 1)}</p>
         </div>
 
+        <div className="rounded-2xl border border-gold/30 bg-gold/5 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-gold">VIP rewards</p><p className="mt-1 font-display text-xl font-bold">{vipConfig?.name ?? `VIP${vip}`}</p></div><Crown className="size-5 text-gold" /></div><div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><p className="text-muted-foreground">Commission</p><p className="font-bold">{vipConfig?.commissionPercent ?? 0}%</p></div><div><p className="text-muted-foreground">Upgrade bonus</p><p className="font-bold">{money(vipConfig?.upgradeBonus ?? 0)}</p></div><div><p className="text-muted-foreground">Monthly bonus</p><p className="font-bold">{money(vipConfig?.monthlyBonus ?? 0)}</p></div></div>{nextVip && <p className="mt-3 text-xs text-muted-foreground">Next: {nextVip.name} at {money(nextVip.wagerRequired)} wagering</p>}</div>
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">Balance</p><p className="font-display text-2xl font-bold">{money(s.balance)}</p></div>
           <div className="rounded-2xl bg-card p-4"><p className="text-xs text-muted-foreground">Safe vault</p><p className="font-display text-2xl font-bold">{money(s.vault)}</p></div>
@@ -90,8 +97,11 @@ function Account() {
           {[{ i: Lock, l: "Change login password" }, { i: Bell, l: "Notifications" }].map(({ i: I, l }) => (
             <button key={l} onClick={() => toast("Available in the full version")} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><I className="h-5 w-5 text-primary" />{l}</button>
           ))}
-          <div className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3"><Globe className="h-5 w-5 text-primary" /><span>Language: English</span></div>
+          <button onClick={() => setLanguageOpen(true)} className="flex w-full items-center gap-3 rounded-xl bg-secondary px-4 py-3 text-left"><Globe className="h-5 w-5 text-primary" /><span>Language: {s.lang === "my" ? "မြန်မာစာ" : "English"}</span><ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" /></button>
         </div>
+      </BottomSheet>
+      <BottomSheet open={languageOpen} onClose={() => setLanguageOpen(false)} title="Select language">
+        <div className="space-y-2">{[{ code: "en" as const, label: "🇬🇧 English" }, { code: "my" as const, label: "🇲🇲 မြန်မာစာ" }].map((option) => <button key={option.code} onClick={() => { s.setLanguage(option.code); setLanguageOpen(false); toast.success(option.code === "my" ? "ဘာသာစကား ပြောင်းပြီးပါပြီ" : "Language updated"); }} className={`flex w-full items-center justify-between rounded-xl border px-4 py-4 text-left font-semibold ${s.lang === option.code ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary"}`}><span>{option.label}</span>{s.lang === option.code && <span className="text-xs">Selected</span>}</button>)}</div>
       </BottomSheet>
     </AppShell>
   );

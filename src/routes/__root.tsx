@@ -15,6 +15,12 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { StoreProvider } from "../lib/store";
 
+declare global {
+  interface Window {
+    Telegram?: { WebApp?: { ready: () => void; expand: () => void } };
+  }
+}
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -87,11 +93,31 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function TelegramWebAppBootstrap() {
+  useEffect(() => {
+    const initializeTelegram = () => {
+      window.Telegram?.WebApp?.ready();
+      window.Telegram?.WebApp?.expand();
+    };
+    if (window.Telegram?.WebApp) {
+      initializeTelegram();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-web-app.js";
+    script.async = true;
+    script.onload = initializeTelegram;
+    document.head.appendChild(script);
+  }, []);
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
       <StoreProvider>
+        <TelegramWebAppBootstrap />
         <Outlet />
         <Toaster theme="dark" position="top-center" richColors />
       </StoreProvider>

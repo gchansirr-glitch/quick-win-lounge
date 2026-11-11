@@ -35,7 +35,7 @@ function WalletPage() {
   const [depositStep, setDepositStep] = useState<1 | 2>(1);
   const [editingAccounts, setEditingAccounts] = useState(false);
   const [accountDraft, setAccountDraft] = useState(s.paymentAccounts);
-  const [filter, setFilter] = useState<"all" | "deposit" | "withdraw" | "game">("all");
+  const [filter, setFilter] = useState<"all" | "deposit" | "withdraw" | "game" | "commission">("all");
   useEffect(() => { if (action) setOpen(action); }, [action]);
 
   const txs = s.txs.filter((t) => filter === "all" || (filter === "game" ? t.type === "bet" || t.type === "win" : t.type === filter)).slice(0, 50);
@@ -85,8 +85,8 @@ function WalletPage() {
           <button onClick={() => setOpen("withdraw")} className="flex flex-col items-center gap-1 rounded-2xl bg-card py-4 font-semibold"><ArrowUpRight className="h-6 w-6 text-primary" />Withdraw</button>
         </div>
         <h2 className="text-lg font-bold">Transaction history</h2>
-        <div className="grid grid-cols-4 gap-1.5">
-          {(["all", "deposit", "withdraw", "game"] as const).map((f) => (
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+          {(["all", "deposit", "withdraw", "commission", "game"] as const).map((f) => (
             <button key={f} onClick={() => setFilter(f)} className={`rounded-lg py-1.5 text-xs font-semibold capitalize ${filter === f ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground"}`}>{f}</button>
           ))}
         </div>

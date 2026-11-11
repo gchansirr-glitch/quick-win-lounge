@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { MarketId, Side } from "./market";
+import { supabase, signOutShared } from "./supabase";
 type GameKind = MarketId;
 
-export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "vault"; amount: number; at: number; note: string };
+export type Tx = { id: string; type: "deposit" | "withdraw" | "bet" | "win" | "bonus" | "commission" | "vault"; amount: number; at: number; note: string };
+export type VipLevel = { level: number; name: string; wagerRequired: number; commissionPercent: number; upgradeBonus: number; monthlyBonus: number };
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
-export type UserRole = "user" | "sub-admin" | "super-admin";
+export type UserRole = "user" | "sub-admin" | "affiliate-agent" | "super-admin";
 export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
 export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean; role: UserRole };
 export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
@@ -27,9 +29,13 @@ type State = {
   requests: CashRequest[];
   profiles: Record<string, Pick<State, "balance" | "vault" | "txs" | "bets" | "lastCheckIn" | "streak" | "redeemed" | "requests">>;
   persistSession: boolean;
+  vipLevels: VipLevel[];
+  referralCode: string;
+  referredCount: number;
+  lang: "en" | "my";
 };
 
-const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true };
+const initial: State = { user: null, registeredUsers: [], subAdminEmails: [], paymentAccounts: { kpayPhone: "", kpayName: "", wavePhone: "", waveName: "", qrCode: "" }, balance: 0, vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], marketOverride: null, marketOverrides: {}, requests: [], profiles: {}, persistSession: true, vipLevels: Array.from({ length: 6 }, (_, index) => ({ level: index, name: index === 0 ? "Starter" : `VIP ${index}`, wagerRequired: index * 10000, commissionPercent: index * 0.5, upgradeBonus: index * 1000, monthlyBonus: index * 500 })), referralCode: "", referredCount: 0, lang: "en" };
 const KEY = "tp-lottery-v1";
 const SESSION_KEY = "tp-lottery-session-v1";
 const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
@@ -37,7 +43,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string, remember?: boolean) => void;
+  login: (email: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string }) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -53,6 +59,8 @@ type Ctx = State & {
   moveVault: (amt: number, toVault: boolean) => boolean;
   appointSubAdmin: (email: string) => boolean;
   removeSubAdmin: (email: string) => void;
+  saveVipLevels: (levels: VipLevel[]) => void;
+  setLanguage: (lang: "en" | "my") => void;
 };
 
 const C = createContext<Ctx | null>(null);
@@ -61,12 +69,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initial);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
-      if (raw) setS({ ...initial, ...JSON.parse(raw) });
-    } catch {}
-    setReady(true);
+    let channel: ReturnType<NonNullable<typeof supabase>["channel"]> | undefined;
+    const restore = async () => {
+      try {
+        const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
+        if (raw) setS({ ...initial, ...JSON.parse(raw) });
+      } catch {}
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        const authUser = data.session?.user;
+        if (authUser) {
+          const { data: profile } = await (supabase as any).from("profiles").select("*").eq("id", authUser.id).maybeSingle();
+          if (profile) setS((p) => ({ ...p, user: { email: profile.email, uid: profile.id, inviteCode: profile.referral_code ?? "", isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
+          channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
+        }
+      }
+      setReady(true);
+    };
+    void restore();
+    return () => { if (channel) void channel.unsubscribe(); };
   }, []);
+  useEffect(() => {
+    if (!ready || !s.user || !supabase) return;
+    const syncProfile = async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) return;
+      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", updated_at: new Date().toISOString() }, { onConflict: "id", ignoreDuplicates: true });
+    };
+    void syncProfile();
+  }, [ready, s.user?.email, s.balance]);
   useEffect(() => {
     if (!ready) return;
     const serialized = JSON.stringify(s);
@@ -79,16 +110,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api: Ctx = {
     ...s, ready,
-    login: (email, remember = true) => setS((p) => {
+    login: (email, remember = true, authId, authProfile) => setS((p) => {
       const normalized = email.trim().toLowerCase();
       const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
-      const role: UserRole = normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user";
-      const account = existing ? { ...existing, email: normalized, role, isAdmin: role !== "user" } : { email: normalized, uid: String(100000 + (Math.random() * 900000) | 0), inviteCode: uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
+      const profileRole = authProfile?.role === "super_admin" ? "super-admin" : authProfile?.role === "sub_admin" ? "sub-admin" : authProfile?.role === "affiliate_agent" ? "affiliate-agent" : undefined;
+      const role: UserRole = profileRole ?? (normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user");
+      const account = existing ? { ...existing, email: normalized, uid: authId ?? existing.uid, role, isAdmin: role !== "user" } : { email: normalized, uid: authId ?? String(100000 + (Math.random() * 900000) | 0), inviteCode: authProfile?.referral_code ?? uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
       const profiles = { ...p.profiles };
       if (p.user) profiles[p.user.email] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
       const saved = profiles[normalized];
       const firstLogin = !existing && !saved;
-      const profile = saved ?? { balance: 1000, vault: 0, txs: firstLogin ? [tx("bonus", 1000, "Welcome bonus")] : [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
+      const profile = saved ?? { balance: Number(authProfile?.balance ?? 0), vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
       const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
       if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       return next;
@@ -97,6 +129,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!p.user) return p;
       const profiles = { ...p.profiles, [p.user.email]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
       sessionStorage.removeItem(SESSION_KEY);
+      void signOutShared();
       return { ...p, profiles, user: null };
     }),
     appointSubAdmin: (email) => {
@@ -109,6 +142,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMarketOverride: (side) => setS((p) => ({ ...p, marketOverride: side })),
     setMarketDirection: (market, side) => setS((p) => ({ ...p, marketOverrides: { ...p.marketOverrides, ...(side ? { [market]: side } : (() => { const next = { ...p.marketOverrides }; delete next[market]; return next; })()) } })),
     savePaymentAccounts: (accounts) => setS((p) => ({ ...p, paymentAccounts: accounts })),
+    saveVipLevels: (levels) => setS((p) => s.user?.role === "super-admin" || s.user?.role === "sub-admin" ? ({ ...p, vipLevels: levels }) : p),
+    setLanguage: (lang) => setS((p) => ({ ...p, lang })),
+
     deposit: (amt, method, account, accountName, receiptImage, referenceLast5) => setS((p) => ({ ...p, requests: [{ id: uid(), type: "deposit", amount: amt, method, account, accountName, userEmail: p.user?.email, receiptImage, referenceLast5, status: "pending", at: Date.now() }, ...p.requests] })),
     withdraw: (amt, method, account, accountName) => {
       if (amt > s.balance) return false;

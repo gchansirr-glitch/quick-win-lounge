@@ -7,6 +7,11 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_SUPABASE_URL_2": JSON.stringify(process.env.SUPABASE_URL_2),
+    "import.meta.env.VITE_SUPABASE_ANON_KEY_2": JSON.stringify(process.env.SUPABASE_ANON_KEY_2),
+    "import.meta.env.VITE_SUPABASE_JWT": JSON.stringify(process.env.JWT),
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
