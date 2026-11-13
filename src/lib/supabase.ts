@@ -46,7 +46,7 @@ function fallbackAuthenticate(identity: string, password: string, mode: "login" 
     const userCode = newLocalPublicUid(records);
     const account: LocalAuthRecord = { id: `usr_${Date.now()}`, email: normalized, password, profile: { role, balance: 1000, referral_code: userCode, user_code: userCode } };
     saveLocalAuth(account);
-    return { ...account, phone: /^\S+@\S+\.\S+$/.test(normalized) ? undefined : normalized };
+    return { ...account, profile: { ...account.profile, welcome_bonus: 1000 }, phone: /^\S+@\S+\.\S+$/.test(normalized) ? undefined : normalized };
   }
   const account = records.find((record) => record.email === normalized && record.password === password);
   if (!account) throw new Error("Invalid email or password");
