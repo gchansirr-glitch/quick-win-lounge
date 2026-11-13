@@ -12,6 +12,11 @@ type LocalAuthRecord = { id: string; email: string; password: string; profile: {
 const LOCAL_AUTH_KEY = "tp-registered-users";
 const isPublicUid = (value: unknown): value is string => typeof value === "string" && /^\d{8}$/.test(value);
 const newPublicUid = () => String(Math.floor(10_000_000 + Math.random() * 90_000_000));
+const newLocalPublicUid = (records: LocalAuthRecord[]) => {
+  let candidate = newPublicUid();
+  while (records.some((record) => record.profile.user_code === candidate)) candidate = newPublicUid();
+  return candidate;
+};
 
 async function reservePublicUid() {
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -38,14 +43,14 @@ function fallbackAuthenticate(identity: string, password: string, mode: "login" 
   const records = localAuthRecords();
   if (mode === "register") {
     if (records.some((record) => record.email === normalized)) throw new Error("An account with this contact already exists");
-    const userCode = newPublicUid();
+    const userCode = newLocalPublicUid(records);
     const account: LocalAuthRecord = { id: `usr_${Date.now()}`, email: normalized, password, profile: { role, balance: 1000, referral_code: userCode, user_code: userCode } };
     saveLocalAuth(account);
     return { ...account, phone: /^\S+@\S+\.\S+$/.test(normalized) ? undefined : normalized };
   }
   const account = records.find((record) => record.email === normalized && record.password === password);
   if (!account) throw new Error("Invalid email or password");
-  const userCode = isPublicUid(account.profile.user_code) ? account.profile.user_code : newPublicUid();
+  const userCode = isPublicUid(account.profile.user_code) ? account.profile.user_code : newLocalPublicUid(records.filter((record) => record.email !== normalized));
   const updated = { ...account, profile: { ...account.profile, role, user_code: userCode, referral_code: account.profile.referral_code || userCode } };
   saveLocalAuth(updated);
   return { ...updated, phone: /^\S+@\S+\.\S+$/.test(normalized) ? undefined : normalized };

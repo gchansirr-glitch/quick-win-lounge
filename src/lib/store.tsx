@@ -85,7 +85,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (raw) {
           const restored = { ...initial, ...JSON.parse(raw) } as State;
           if (restored.user) {
-            const oldUid = restored.user.uid;
+            const oldUid = typeof restored.user.uid === "string" ? restored.user.uid : "";
             const publicUid = isValidPublicUid(oldUid) ? oldUid : createUniquePublicUid(restored.registeredUsers);
             restored.user = { ...restored.user, uid: publicUid, authId: restored.user.authId ?? (oldUid.includes("-") ? oldUid : undefined), inviteCode: restored.user.inviteCode || publicUid };
             restored.registeredUsers = restored.registeredUsers.map((account) => account.uid === oldUid ? { ...account, uid: publicUid, authId: restored.user?.authId, inviteCode: account.inviteCode || publicUid } : account);
