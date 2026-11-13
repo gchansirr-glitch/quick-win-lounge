@@ -88,7 +88,7 @@ function Login() {
     if (mode === "register" && pw !== pw2) return toast.error("Passwords do not match");
     try {
       const account = await authenticate(identity, pw, mode, invite);
-      login(account.email ?? identity, remember, account.id, account.profile);
+      login(account.email || identity, remember, account.id, account.profile, account.phone);
       toast.success(mode === "register" ? "Account created — MMK 1,000 welcome bonus!" : "Welcome back!");
       nav({ to: "/" });
     } catch (error) {

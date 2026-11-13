@@ -1,11 +1,10 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Crown, Copy, Vault, History, Settings, LogOut, ChevronRight, Bell, Lock, Globe } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { BottomSheet, btnPrimary, inputCls } from "@/components/Sheet";
 import { useStore, money } from "@/lib/store";
-import { supabase } from "@/lib/supabase";
 import { MyPositions } from "@/components/markets";
 
 export const Route = createFileRoute("/account")({
@@ -24,8 +23,7 @@ function Account() {
   const [sheet, setSheet] = useState<"vault" | "history" | "settings" | null>(null);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [amt, setAmt] = useState("");
-  const [userCode, setUserCode] = useState("");
-  useEffect(() => { if (!supabase || !s.user?.uid) return; void (async () => { const { data } = await (supabase as any).from("profiles").select("user_code").eq("id", s.user!.uid).maybeSingle(); setUserCode(data?.user_code ?? ""); })(); }, [s.user?.uid]);
+  const userId = s.user?.uid ?? "00000000";
   const wagered = s.bets.reduce((a, b) => a + b.amount, 0);
   const vip = Math.min(10, Math.floor(wagered / 1000));
   const vipConfig = s.vipLevels.find((level) => level.level === vip) ?? s.vipLevels[0];
@@ -49,10 +47,10 @@ function Account() {
       <div className="space-y-4">
         <div className="rounded-2xl bg-gradient-red p-5 shadow-red text-primary-foreground">
           <div className="flex items-center gap-3">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-background/25 font-display text-2xl font-bold">{s.user!.email.slice(-2)}</div>
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-background/25 font-display text-2xl font-bold">{(s.user!.phone || s.user!.email || userId).slice(-2)}</div>
             <div className="min-w-0">
-              <p className="flex items-center gap-2 truncate font-bold">{s.user!.email}<span className="flex shrink-0 items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-xs text-background"><Crown className="h-3 w-3" />VIP{vip}</span></p>
-              <button onClick={() => { navigator.clipboard?.writeText(userCode); toast.success("User ID copied"); }} className="flex items-center gap-1 text-sm opacity-90">User ID {userCode || "—"}<Copy className="h-3 w-3" /></button>
+              <p className="flex items-center gap-2 truncate font-bold">{s.user!.phone || s.user!.email || userId}<span className="flex shrink-0 items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-xs text-background"><Crown className="h-3 w-3" />VIP{vip}</span></p>
+              <button onClick={() => { navigator.clipboard?.writeText(userId); toast.success("UID copied to clipboard"); }} className="flex items-center gap-1 text-sm opacity-90">UID {userId}<Copy className="h-3 w-3" /></button>
             </div>
           </div>
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-background/25"><div className="h-full bg-gold" style={{ width: `${(wagered % 1000) / 10}%` }} /></div>

@@ -9,7 +9,16 @@ export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: nu
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type UserRole = "user" | "sub-admin" | "affiliate-agent" | "super-admin";
 export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
-export type User = { email: string; uid: string; inviteCode: string; isAdmin: boolean; role: UserRole };
+export type User = { email: string; phone?: string; uid: string; authId?: string; inviteCode: string; isAdmin: boolean; role: UserRole };
+
+const isValidPublicUid = (value: unknown): value is string => typeof value === "string" && /^\d{8}$/.test(value);
+const createUniquePublicUid = (users: User[], preferred?: unknown) => {
+  const used = new Set(users.map((user) => user.uid));
+  if (isValidPublicUid(preferred) && !used.has(preferred)) return preferred;
+  let candidate = "";
+  do { candidate = String(Math.floor(10_000_000 + Math.random() * 90_000_000)); } while (used.has(candidate));
+  return candidate;
+};
 export type PaymentAccount = { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string; qrCode: string };
 
 type State = {
@@ -43,7 +52,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (email: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string }) => void;
+  login: (identity: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string }, phone?: string) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -73,14 +82,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const restore = async () => {
       try {
         const raw = localStorage.getItem(KEY) ?? sessionStorage.getItem(SESSION_KEY);
-        if (raw) setS({ ...initial, ...JSON.parse(raw) });
+        if (raw) {
+          const restored = { ...initial, ...JSON.parse(raw) } as State;
+          if (restored.user) {
+            const oldUid = typeof restored.user.uid === "string" ? restored.user.uid : "";
+            const publicUid = isValidPublicUid(oldUid) ? oldUid : createUniquePublicUid(restored.registeredUsers);
+            restored.user = { ...restored.user, uid: publicUid, authId: restored.user.authId ?? (oldUid.includes("-") ? oldUid : undefined), inviteCode: restored.user.inviteCode || publicUid };
+            restored.registeredUsers = restored.registeredUsers.map((account) => account.uid === oldUid ? { ...account, uid: publicUid, authId: restored.user?.authId, inviteCode: account.inviteCode || publicUid } : account);
+            restored.registeredUsers = restored.registeredUsers.map((account) => ({ ...account, uid: createUniquePublicUid(restored.registeredUsers.filter((item) => item !== account), account.uid), inviteCode: account.inviteCode || account.uid }));
+          }
+          setS(restored);
+        }
       } catch {}
       if (supabase) {
         const { data } = await supabase.auth.getSession();
         const authUser = data.session?.user;
         if (authUser) {
-          const { data: profile } = await (supabase as any).from("profiles").select("*").eq("id", authUser.id).maybeSingle();
-          if (profile) setS((p) => ({ ...p, user: { email: profile.email, uid: profile.id, inviteCode: profile.referral_code ?? "", isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
+          const { data: profile } = await (supabase as any).from("profiles").select("id,email,role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
+          if (profile) {
+            const publicUid = isValidPublicUid(profile.user_code) ? profile.user_code : createUniquePublicUid([]);
+            if (!isValidPublicUid(profile.user_code)) void (supabase as any).from("profiles").update({ user_code: publicUid, referral_code: profile.referral_code || publicUid }).eq("id", authUser.id);
+            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: profile.referral_code || publicUid, isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
+          }
           channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
         }
       }
@@ -94,10 +117,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const syncProfile = async () => {
       const { data: authData } = await supabase.auth.getUser();
       if (!authData.user) return;
-      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email ?? authData.user.email ?? "", role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", updated_at: new Date().toISOString() }, { onConflict: "id", ignoreDuplicates: true });
+      await (supabase as any).from("profiles").upsert({ id: authData.user.id, email: s.user?.email || authData.user.email || `${s.user?.phone ?? ""}@phone.local`, role: s.user?.role === "super-admin" ? "super_admin" : s.user?.role === "sub-admin" ? "sub_admin" : s.user?.role === "affiliate-agent" ? "affiliate_agent" : "user", user_code: s.user?.uid, referral_code: s.user?.inviteCode, updated_at: new Date().toISOString() }, { onConflict: "id", ignoreDuplicates: true });
+      await (supabase as any).from("profiles").update({ user_code: s.user?.uid, referral_code: s.user?.inviteCode }).eq("id", authData.user.id);
     };
     void syncProfile();
-  }, [ready, s.user?.email, s.balance]);
+  }, [ready, s.user?.email, s.user?.phone, s.user?.uid, s.user?.authId, s.user?.inviteCode, s.balance]);
   useEffect(() => {
     if (!ready) return;
     const serialized = JSON.stringify(s);
@@ -110,24 +134,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const api: Ctx = {
     ...s, ready,
-    login: (email, remember = true, authId, authProfile) => setS((p) => {
-      const normalized = email.trim().toLowerCase();
-      const existing = p.registeredUsers.find((u) => u.email.toLowerCase() === normalized);
+    login: (identity, remember = true, authId, authProfile, suppliedPhone) => setS((p) => {
+      const normalized = identity.trim().toLowerCase();
+      const isEmail = /^\S+@\S+\.\S+$/.test(normalized);
+      const phone = suppliedPhone ?? (!isEmail ? normalized : undefined);
+      const existing = p.registeredUsers.find((account) => account.authId === authId || (isEmail ? account.email.toLowerCase() === normalized : account.phone === phone));
       const profileRole = authProfile?.role === "super_admin" ? "super-admin" : authProfile?.role === "sub_admin" ? "sub-admin" : authProfile?.role === "affiliate_agent" ? "affiliate-agent" : undefined;
       const role: UserRole = profileRole ?? (normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user");
-      const account = existing ? { ...existing, email: normalized, uid: authId ?? existing.uid, role, isAdmin: role !== "user" } : { email: normalized, uid: authId ?? String(100000 + (Math.random() * 900000) | 0), inviteCode: authProfile?.referral_code ?? uid().toUpperCase().slice(0, 7), isAdmin: role !== "user", role };
+      const publicUid = createUniquePublicUid(p.registeredUsers.filter((account) => account !== existing), authProfile?.user_code ?? existing?.uid);
+      const inviteCode = authProfile?.referral_code || existing?.inviteCode || publicUid;
+      const account: User = { email: isEmail ? normalized : "", phone, uid: publicUid, authId, inviteCode, isAdmin: role !== "user", role };
       const profiles = { ...p.profiles };
-      if (p.user) profiles[p.user.email] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
+      if (p.user) profiles[p.user.email || p.user.phone || p.user.uid] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
       const saved = profiles[normalized];
-      const firstLogin = !existing && !saved;
       const profile = saved ?? { balance: Number(authProfile?.balance ?? 0), vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
-      const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((u) => u.email.toLowerCase() === normalized ? account : u) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
+      const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((item) => item === existing ? account : item) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
       if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       return next;
     }),
     logout: () => setS((p) => {
       if (!p.user) return p;
-      const profiles = { ...p.profiles, [p.user.email]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
+      const profiles = { ...p.profiles, [p.user.email || p.user.phone || p.user.uid]: Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string] };
       sessionStorage.removeItem(SESSION_KEY);
       void signOutShared();
       return { ...p, profiles, user: null };

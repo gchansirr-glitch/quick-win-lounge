@@ -29,10 +29,10 @@ function AgentPortal() {
     let channel: ReturnType<NonNullable<typeof supabase>["channel"]> | undefined;
     const load = async () => {
       if (!supabase) return;
-      const { data: downline } = await (supabase as any).from("agent_players").select("player_id, created_at, profiles!agent_players_player_id_fkey(email, balance)").eq("agent_id", user.uid);
-      const { data: earnings } = await (supabase as any).from("financial_ledger").select("id, type, amount, created_at, note").eq("user_id", user.uid).eq("type", "commission").order("created_at", { ascending: false }).limit(100);
-      const { data: profile } = await (supabase as any).from("profiles").select("credit_balance").eq("id", user.uid).maybeSingle();
-      const { data: cashRequests } = await (supabase as any).from("cash_requests").select("id, user_id, type, amount, method, status, created_at").eq("agent_id", user.uid).eq("status", "pending").order("created_at", { ascending: false });
+      const { data: downline } = await (supabase as any).from("agent_players").select("player_id, created_at, profiles!agent_players_player_id_fkey(email, balance)").eq("agent_id", (user.authId ?? user.uid));
+      const { data: earnings } = await (supabase as any).from("financial_ledger").select("id, type, amount, created_at, note").eq("user_id", (user.authId ?? user.uid)).eq("type", "commission").order("created_at", { ascending: false }).limit(100);
+      const { data: profile } = await (supabase as any).from("profiles").select("credit_balance").eq("id", (user.authId ?? user.uid)).maybeSingle();
+      const { data: cashRequests } = await (supabase as any).from("cash_requests").select("id, user_id, type, amount, method, status, created_at").eq("agent_id", (user.authId ?? user.uid)).eq("status", "pending").order("created_at", { ascending: false });
       const invited = await getInvitedUsers(userSearch);
       setPlayers((downline ?? []).map((item: any) => ({ ...item, profile: item.profiles })));
       setLedger(earnings ?? []);
@@ -42,7 +42,7 @@ function AgentPortal() {
       setLoading(false);
     };
     void load();
-    if (supabase) channel = supabase.channel(`agent-sync:${user.uid}`).on("postgres_changes", { event: "*", schema: "public", table: "agent_players", filter: `agent_id=eq.${user.uid}` }, () => void load()).on("postgres_changes", { event: "INSERT", schema: "public", table: "financial_ledger", filter: `user_id=eq.${user.uid}` }, () => void load()).subscribe();
+    if (supabase) channel = supabase.channel(`agent-sync:${(user.authId ?? user.uid)}`).on("postgres_changes", { event: "*", schema: "public", table: "agent_players", filter: `agent_id=eq.${(user.authId ?? user.uid)}` }, () => void load()).on("postgres_changes", { event: "INSERT", schema: "public", table: "financial_ledger", filter: `user_id=eq.${(user.authId ?? user.uid)}` }, () => void load()).subscribe();
     return () => { if (channel) void channel.unsubscribe(); };
   }, [ready, user, navigate]);
 
