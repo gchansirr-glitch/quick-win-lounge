@@ -5,7 +5,7 @@ import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide
 import { useStore, money } from "@/lib/store";
 import { placeSharedBet } from "@/lib/supabase";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
-import { fmtClock, fmtPrice, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
+import { fmtClock, fmtPrice, isMarketLocked, lockoutSecondsFor, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
 export function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -28,7 +28,8 @@ export function useMarketState(m: Market, now: number) {
   const downVolume = positions.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
   const autoBias = upVolume === downVolume ? pUpBase : upVolume > downVolume ? Math.min(pUpBase, 0.28) : Math.max(pUpBase, 0.72);
   const pUp = marketOverride === "up" ? Math.max(pUpBase, 0.72) : marketOverride === "down" ? Math.min(pUpBase, 0.28) : autoBias;
-  return { period, left, target, price, pUp, upOdds: oddsFor(pUp), downOdds: oddsFor(1 - pUp), vol: volumeOf(m, period, elapsed), locked: left <= 3 };
+  const lockoutSeconds = lockoutSecondsFor(m.dur);
+  return { period, left, target, price, pUp, upOdds: oddsFor(pUp), downOdds: oddsFor(1 - pUp), vol: volumeOf(m, period, elapsed), lockoutSeconds, locked: isMarketLocked(m.dur, left) };
 }
 
 /** Settles any finished rounds for the signed-in user; mounted once in the app shell. */
@@ -90,9 +91,10 @@ export function MarketCard({ m, now, onBet }: { m: Market; now: number; onBet: (
         </div>
         <p className="mt-3 text-sm text-muted-foreground">Target <span className="font-semibold text-foreground tabular-nums">${fmtPrice(st.target)}</span> · Now <span className={`font-semibold tabular-nums ${st.price >= st.target ? "text-win-green" : "text-win-red"}`}>${fmtPrice(st.price)}</span></p>
       </Link>
-      <div className="mt-4 space-y-3">
+      <div className="relative mt-4 space-y-3 rounded-2xl">
         <OddsRow side="up" odds={st.upOdds} p={st.pUp} disabled={st.locked} onClick={() => onBet(m, "up")} />
         <OddsRow side="down" odds={st.downOdds} p={1 - st.pUp} disabled={st.locked} onClick={() => onBet(m, "down")} />
+        {st.locked && <div className="absolute inset-0 z-10 grid place-content-center rounded-2xl bg-background/80 text-center backdrop-blur-[2px]" role="status" aria-live="polite"><span className="font-display text-5xl font-black leading-none text-primary tabular-nums">{st.left}</span><span className="mt-2 text-xs font-bold uppercase tracking-wider text-foreground">Betting Closed</span><span className="mt-1 text-[11px] text-muted-foreground">Waiting for Draw</span></div>}
       </div>
       <p className="mt-4 text-sm"><span className="font-semibold text-gold tabular-nums">{fmtClock(st.left)}</span><span className="ml-3 text-muted-foreground">${(st.vol / 1000).toFixed(2)}K Vol.</span></p>
     </div>
@@ -153,14 +155,19 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   const [amt, setAmt] = useState("100");
   const [quantity, setQuantity] = useState(1);
   const st = useMarketState(bet.m, now);
+  const wasLocked = useRef(false);
+  useEffect(() => {
+    if (st.locked && !wasLocked.current) toast.error("Betting closed for current round");
+    wasLocked.current = st.locked;
+  }, [st.locked]);
   const odds = 2;
   const baseAmount = Number(amt) || 0;
   const totalAmount = baseAmount * quantity;
   const roundIds = useRef<Record<string, string>>({});
   const up = bet.side === "up";
   const confirm = async () => {
+    if (st.locked) return toast.error("Betting closed for current round");
     if (baseAmount < 10) return toast.error("Minimum base bet is MMK 10");
-    if (st.locked) return toast.error("Round is closing — wait for the next one");
     if (s.balance < totalAmount) return toast.error(`Insufficient balance. You need ${money(totalAmount)}.`);
     try {
       const roundKey = `${bet.m.id}-${st.period}`;
@@ -176,6 +183,7 @@ function BetSheetInner({ bet, onClose }: { bet: { m: Market; side: Side }; onClo
   return (
     <BottomSheet open onClose={onClose} title={`${bet.m.name} · ${up ? "Up" : "Down"}`}>
       <div className="space-y-4">
+        {st.locked && <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-center text-xs font-semibold text-primary" role="status">Round closed. Please wait for next draw</div>}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <div className="rounded-xl bg-secondary p-2"><p className="text-muted-foreground">Target</p><p className="font-semibold tabular-nums">${fmtPrice(st.target)}</p></div>
           <div className="rounded-xl bg-secondary p-2"><p className="text-muted-foreground">Payout</p><p className={`font-semibold tabular-nums ${up ? "text-win-green" : "text-win-red"}`}>{odds.toFixed(2)}x</p></div>

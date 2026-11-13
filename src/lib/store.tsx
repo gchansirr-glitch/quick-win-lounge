@@ -193,13 +193,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     settle: (kind, dur, period, result, calc) => {
       let total = 0;
-      const due = s.bets.filter((b) => !b.settled && b.kind === kind && b.dur === dur && b.period <= period);
+      const due = s.bets.filter((b) => !b.settled && b.kind === kind && b.dur === dur && b.period === period);
       if (!due.length) return 0;
       due.forEach((b) => (total += calc(b)));
       setS((p) => {
         let win = 0;
         const bets = p.bets.map((b) => {
-          if (b.settled || b.kind !== kind || b.dur !== dur || b.period > period) return b;
+          if (b.settled || b.kind !== kind || b.dur !== dur || b.period !== period) return b;
           const w = calc(b); win += w;
           return { ...b, settled: true, won: w, result };
         });

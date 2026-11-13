@@ -87,6 +87,7 @@ function MarketDetail() {
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 mx-auto grid max-w-md grid-cols-2 gap-3 border-t border-border bg-surface/95 p-4 backdrop-blur">
+        {st.locked && <div className="absolute inset-x-0 bottom-full z-10 flex items-center justify-center gap-3 bg-background/85 px-4 py-3 text-center backdrop-blur"><span className="font-display text-3xl font-black text-primary tabular-nums">{st.left}</span><span className="text-xs font-bold uppercase tracking-wide">Betting Closed · Waiting for Draw</span></div>}
         <button disabled={st.locked} onClick={() => setBet({ m, side: "up" })} className="flex items-center justify-center gap-2 rounded-xl bg-win-green py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40"><ArrowUpRight className="size-4" />Buy Up · {fixedOdds.toFixed(2)}x</button>
         <button disabled={st.locked} onClick={() => setBet({ m, side: "down" })} className="flex items-center justify-center gap-2 rounded-xl bg-primary py-3 font-bold text-primary-foreground active:scale-95 disabled:opacity-40"><ArrowDownRight className="size-4" />Sell Down · {fixedOdds.toFixed(2)}x</button>
       </div>
