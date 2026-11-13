@@ -27,26 +27,18 @@ const tiers = [
 
 function Promotion() {
   const { user } = useStore();
-  const [userCode, setUserCode] = useState("");
   const [view, setView] = useState<"home" | "subordinates" | "commission" | "rules" | "service" | "rates">("home");
   const [subordinateSearch, setSubordinateSearch] = useState("");
   const [subordinateTier, setSubordinateTier] = useState("all");
   const [subordinates, setSubordinates] = useState<Array<{ user_id: string; user_code: string; registered_at: string; balance: number; total_deposit: number; total_bet_volume: number; total_commission: number }>>([]);
   useEffect(() => {
-    if (!supabase || !user?.uid) return;
-    void (async () => {
-      const { data } = await (supabase as any).from("profiles").select("user_code,referral_code").eq("id", user.uid).maybeSingle();
-      setUserCode(data?.user_code ?? "");
-    })();
-  }, [user?.uid]);
-  useEffect(() => {
-    if (!supabase || !user?.uid) return;
+    if (!supabase || !user?.authId) return;
     void (async () => {
       const { data } = await (supabase as any).rpc("get_agent_invited_users", { p_search: view === "subordinates" ? subordinateSearch.trim() || null : null });
       if (data) setSubordinates(data);
     })();
-  }, [user?.uid, view, subordinateSearch]);
-  const code = user?.inviteCode || "";
+  }, [user?.authId, view, subordinateSearch]);
+  const code = user?.inviteCode || user?.uid || "";
   const link = typeof window !== "undefined" ? `${window.location.origin}/login?invite=${code}` : "";
   const direct = subordinates.length;
   const team = 0;
@@ -89,7 +81,7 @@ function Promotion() {
 
         <button onClick={() => { navigator.clipboard?.writeText(link); toast.success("Invitation link copied!"); }} className="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-5 py-4 text-sm font-extrabold tracking-wide text-primary-foreground shadow-lg shadow-primary/20"><Link2 className="h-5 w-5" />INVITATION LINK</button>
 
-        <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4"><p className="text-xs font-bold uppercase tracking-wider text-primary">Your User ID</p><div className="mt-1 flex items-center justify-between gap-3"><p className="font-mono text-2xl font-bold tracking-widest">{userCode || "Loading…"}</p><button onClick={() => { if (!userCode) return; navigator.clipboard?.writeText(userCode); toast.success("User ID copied"); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Copy</button></div><p className="mt-1 text-xs text-muted-foreground">Share your invitation code to grow your direct subordinates.</p></div>
+        <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4"><p className="text-xs font-bold uppercase tracking-wider text-primary">YOUR USER ID</p><div className="mt-1 flex items-center justify-between gap-3"><p className="font-mono text-2xl font-bold tracking-widest">{user?.uid || "00000000"}</p><button onClick={() => { navigator.clipboard?.writeText(user?.uid || "00000000"); toast.success("UID copied to clipboard"); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground">Copy</button></div><p className="mt-1 text-xs text-muted-foreground">Share your invitation code to grow your direct subordinates.</p></div>
 
 
 
