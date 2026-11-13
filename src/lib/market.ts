@@ -31,6 +31,8 @@ export function priceAt(m: Market, t: number) {
 }
 
 export const periodOf = (m: Market, t: number) => Math.floor(t / m.dur);
+export const lockoutSecondsFor = (duration: number) => duration === 30 ? 5 : duration === 60 ? 10 : duration === 180 || duration === 300 ? 15 : Math.max(5, Math.ceil(duration * 0.05));
+export const isMarketLocked = (duration: number, secondsRemaining: number) => secondsRemaining <= lockoutSecondsFor(duration);
 
 /**
  * The target is derived only from the first tick of a round. It must never be
