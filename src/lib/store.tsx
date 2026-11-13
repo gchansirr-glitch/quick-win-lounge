@@ -9,7 +9,7 @@ export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: nu
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type UserRole = "user" | "sub-admin" | "affiliate-agent" | "super-admin";
 export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
-export type User = { email: string; phone?: string; uid: string; authId?: string; inviteCode: string; isAdmin: boolean; role: UserRole };
+export type User = { email: string; phone?: string; uid: string; authId?: string; inviteCode: string; lastLoginAt?: number; isAdmin: boolean; role: UserRole };
 
 const isValidPublicUid = (value: unknown): value is string => typeof value === "string" && /^\d{8}$/.test(value);
 const createUniquePublicUid = (users: User[], preferred?: unknown) => {
@@ -52,7 +52,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 type Ctx = State & {
   ready: boolean;
-  login: (identity: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string }, phone?: string) => void;
+  login: (identity: string, remember?: boolean, authId?: string, authProfile?: { id?: string; role?: string; balance?: number; referral_code?: string; user_code?: string; welcome_bonus?: number }, phone?: string) => void;
   logout: () => void;
   setMarketOverride: (side: Side | null) => void;
   setMarketDirection: (market: MarketId, side: Side | null) => void;
@@ -63,6 +63,7 @@ type Ctx = State & {
   placeBet: (b: Omit<Bet, "id" | "at">) => boolean;
   settle: (kind: GameKind, dur: number, period: number, result: Side, calc: (b: Bet) => number) => number;
   bonus: (amt: number, note: string) => void;
+  commission: (amt: number, note: string) => void;
   checkIn: () => number | null;
   redeem: (code: string) => number | null;
   moveVault: (amt: number, toVault: boolean) => boolean;
@@ -87,7 +88,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (restored.user) {
             const oldUid = typeof restored.user.uid === "string" ? restored.user.uid : "";
             const publicUid = isValidPublicUid(oldUid) ? oldUid : createUniquePublicUid(restored.registeredUsers);
-            restored.user = { ...restored.user, uid: publicUid, authId: restored.user.authId ?? (oldUid.includes("-") ? oldUid : undefined), inviteCode: restored.user.inviteCode || publicUid };
+            restored.user = { ...restored.user, uid: publicUid, authId: restored.user.authId ?? (oldUid.includes("-") ? oldUid : undefined), inviteCode: restored.user.inviteCode || publicUid, lastLoginAt: restored.user.lastLoginAt ?? Date.now() };
             restored.registeredUsers = restored.registeredUsers.map((account) => account.uid === oldUid ? { ...account, uid: publicUid, authId: restored.user?.authId, inviteCode: account.inviteCode || publicUid } : account);
             restored.registeredUsers = restored.registeredUsers.map((account) => ({ ...account, uid: createUniquePublicUid(restored.registeredUsers.filter((item) => item !== account), account.uid), inviteCode: account.inviteCode || account.uid }));
           }
@@ -102,7 +103,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (profile) {
             const publicUid = isValidPublicUid(profile.user_code) ? profile.user_code : createUniquePublicUid([]);
             if (!isValidPublicUid(profile.user_code)) void (supabase as any).from("profiles").update({ user_code: publicUid, referral_code: profile.referral_code || publicUid }).eq("id", authUser.id);
-            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: profile.referral_code || publicUid, isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
+            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: profile.referral_code || publicUid, lastLoginAt: authUser.last_sign_in_at ? Date.parse(authUser.last_sign_in_at) : Date.now(), isAdmin: profile.role !== "user", role: profile.role === "super_admin" ? "super-admin" : profile.role === "sub_admin" ? "sub-admin" : profile.role === "affiliate_agent" ? "affiliate-agent" : "user" }, balance: Number(profile.balance ?? p.balance) }));
           }
           channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
         }
@@ -143,11 +144,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const role: UserRole = profileRole ?? (normalized === SUPER_ADMIN_EMAIL ? "super-admin" : p.subAdminEmails.includes(normalized) ? "sub-admin" : "user");
       const publicUid = createUniquePublicUid(p.registeredUsers.filter((account) => account !== existing), authProfile?.user_code ?? existing?.uid);
       const inviteCode = authProfile?.referral_code || existing?.inviteCode || publicUid;
-      const account: User = { email: isEmail ? normalized : "", phone, uid: publicUid, authId, inviteCode, isAdmin: role !== "user", role };
+      const account: User = { email: isEmail ? normalized : "", phone, uid: publicUid, authId, inviteCode, lastLoginAt: Date.now(), isAdmin: role !== "user", role };
       const profiles = { ...p.profiles };
       if (p.user) profiles[p.user.email || p.user.phone || p.user.uid] = Object.fromEntries(profileKeys.map((key) => [key, p[key]])) as State["profiles"][string];
       const saved = profiles[normalized];
-      const profile = saved ?? { balance: Number(authProfile?.balance ?? 0), vault: 0, txs: [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
+      const profile = saved ?? { balance: Number(authProfile?.balance ?? 0), vault: 0, txs: authProfile?.welcome_bonus ? [tx("bonus", authProfile.welcome_bonus, "Welcome bonus")] : [], bets: [], lastCheckIn: null, streak: 0, redeemed: [], requests: [] };
       const next = { ...p, ...profile, profiles, persistSession: remember, registeredUsers: existing ? p.registeredUsers.map((item) => item === existing ? account : item) : [...p.registeredUsers, account], subAdminEmails: p.subAdminEmails, paymentAccounts: p.paymentAccounts, user: account };
       if (remember) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       return next;
@@ -207,6 +208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return total;
     },
     bonus: (amt, note) => setS((p) => ({ ...p, balance: p.balance + amt, txs: [tx("bonus", amt, note), ...p.txs] })),
+    commission: (amt, note) => setS((p) => ({ ...p, balance: p.balance + amt, txs: [tx("commission", amt, note), ...p.txs] })),
     checkIn: () => {
       const today = new Date().toDateString();
       if (s.lastCheckIn === today) return null;
