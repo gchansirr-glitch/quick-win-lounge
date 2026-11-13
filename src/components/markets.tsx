@@ -5,7 +5,7 @@ import { Activity, Zap, Gauge, Mountain, TrendingUp, TrendingDown } from "lucide
 import { useStore, money } from "@/lib/store";
 import { placeSharedBet } from "@/lib/supabase";
 import { BottomSheet, btnPrimary, inputCls } from "./Sheet";
-import { fmtClock, fmtPrice, isMarketLocked, lockoutSecondsFor, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
+import { closeOf, fmtClock, fmtPrice, isMarketLocked, lockoutSecondsFor, oddsFor, periodOf, priceAt, probUp, resultFor, roundLabel, targetOf, volumeOf, MARKETS, type Market, type Side } from "@/lib/market";
 
 export function useNow(ms = 250) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -101,45 +101,52 @@ export function MarketCard({ m, now, onBet }: { m: Market; now: number; onBet: (
   );
 }
 
+type RoundCandle = { period: number; open: number; high: number; low: number; close: number; completed: boolean };
+
+function candleForRound(m: Market, roundPeriod: number, completed: boolean, now: number): RoundCandle {
+  const start = roundPeriod * m.dur;
+  const sampleEnd = completed ? (roundPeriod + 1) * m.dur : Math.floor(now);
+  const open = targetOf(m, roundPeriod);
+  const close = completed ? closeOf(m, roundPeriod) : priceAt(m, now);
+  let high = Math.max(open, close);
+  let low = Math.min(open, close);
+  for (let tick = start + 1; tick <= sampleEnd; tick += 1) {
+    const price = priceAt(m, tick);
+    high = Math.max(high, price);
+    low = Math.min(low, price);
+  }
+  return { period: roundPeriod, open, high, low, close, completed };
+}
+
 export function PriceChart({ m, now }: { m: Market; now: number }) {
-  const period = periodOf(m, now);
+  const nowSecond = Math.floor(now);
+  const period = periodOf(m, nowSecond);
   const target = targetOf(m, period);
-  const { bets, marketOverride } = useStore();
-  const roundBets = bets.filter((b) => b.kind === m.id && b.dur === m.dur && b.period === period);
-  const upVolume = roundBets.filter((b) => b.sel === "up").reduce((sum, b) => sum + b.amount, 0);
-  const downVolume = roundBets.filter((b) => b.sel === "down").reduce((sum, b) => sum + b.amount, 0);
-  const candles = useMemo(() => {
-    const end = Math.floor(now);
-    return Array.from({ length: 32 }, (_, index) => {
-      const closeTime = end - 31 + index;
-      const open = priceAt(m, closeTime - 1);
-      const close = index === 31 ? priceAt(m, now) : priceAt(m, closeTime);
-      const mid = priceAt(m, closeTime - 0.5);
-      const high = Math.max(open, close, mid);
-      const low = Math.min(open, close, mid);
-      return { open, close, high, low };
-    });
-  }, [m, now]);
-  const all = candles.flatMap((c) => [c.high, c.low]).concat(target);
-  const min = Math.min(...all), max = Math.max(...all), pad = (max - min) * 0.15 || 1;
+  const completedCandles = useMemo(() => Array.from({ length: 16 }, (_, index) => candleForRound(m, period - 16 + index, true, 0)), [m, period]);
+  const activeCandle = useMemo(() => candleForRound(m, period, false, now), [m, period, now]);
+  const candles = [...completedCandles, activeCandle];
+  const all = candles.flatMap((candle) => [candle.high, candle.low]).concat(target);
+  const min = Math.min(...all), max = Math.max(...all), pad = (max - min) * 0.15 || Math.max(1, Math.abs(max) * 0.001);
   const y = (value: number) => 100 - ((value - (min - pad)) / (max - min + pad * 2)) * 100;
   const last = candles[candles.length - 1].close;
+  const spacing = 94 / (candles.length - 1);
+  const bodyWidth = Math.min(4.2, spacing * 0.72);
   return (
     <div className="relative h-52 w-full">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible" aria-label="Live one-second candlestick chart" role="img">
-        {[20, 40, 60, 80].map((value) => <line key={value} x1="0" x2="100" y1={value} y2={value} stroke="var(--border)" strokeWidth="0.35" vectorEffect="non-scaling-stroke" />)}
-        <line x1="0" x2="100" y1={y(target)} y2={y(target)} stroke="var(--gold)" strokeDasharray="2 2" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-hidden" aria-label={`${m.tag} round candlestick chart with 16 completed rounds and the current live round`} role="img">
+        {[20, 40, 60, 80].map((value) => <line key={value} x1="0" x2="100" y1={value} y2={value} stroke="var(--border)" strokeWidth="0.45" vectorEffect="non-scaling-stroke" />)}
+        <line x1="0" x2="100" y1={y(target)} y2={y(target)} stroke="var(--gold)" strokeDasharray="3 2" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
         {candles.map((candle, index) => {
-          const x = 2 + (index / (candles.length - 1)) * 96;
+          const x = 3 + index * spacing;
           const rising = candle.close >= candle.open;
           const bodyTop = Math.min(y(candle.open), y(candle.close));
-          const bodyHeight = Math.max(1.2, Math.abs(y(candle.close) - y(candle.open)));
-          const color = rising ? "var(--win-green)" : "var(--win-red)";
-          return <g key={index}><line x1={x} x2={x} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" /><rect x={x - 1.05} y={bodyTop} width="2.1" height={bodyHeight} fill={color} rx="0.25" /></g>;
+          const bodyHeight = Math.max(1.3, Math.abs(y(candle.close) - y(candle.open)));
+          const color = rising ? "#10B981" : "#EF4444";
+          return <g key={candle.period} data-current-candle={!candle.completed || undefined}><line x1={x} x2={x} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.35" vectorEffect="non-scaling-stroke" /><rect x={x - bodyWidth / 2} y={bodyTop} width={bodyWidth} height={bodyHeight} fill={color} stroke={color} strokeWidth="0.55" rx="0.3" /></g>;
         })}
       </svg>
-      <span className="absolute right-0 rounded bg-gold px-1.5 text-[10px] font-bold text-background" style={{ top: `calc(${y(target)}% - 8px)` }}>TARGET</span>
-      <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">1s</span>
+      <span className="absolute right-0 rounded bg-gold px-1.5 text-[10px] font-bold text-background" style={{ top: `calc(${y(target)}% - 8px)` }}>OPEN</span>
+      <span className="absolute bottom-1 left-1 text-[10px] text-muted-foreground">Each candle · {m.tag}</span>
       <span className={`absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full ${last >= target ? "bg-win-green" : "bg-win-red"} ring-4 ring-background`} style={{ top: `${y(last)}%` }} />
     </div>
   );
