@@ -68,6 +68,44 @@ export async function authenticate(email: string, password: string, mode: "login
   return fallbackAuthenticate(normalized, password, mode, inviteCode);
 }
 
+export type ResetMethod = "phone" | "email";
+
+export async function sendPasswordResetCode(identity: string, method: ResetMethod) {
+  const normalized = identity.trim().toLowerCase();
+  if (supabase) {
+    if (method === "email") {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalized, { redirectTo: `${window.location.origin}/login?reset=1` });
+      if (error) throw error;
+      return { devCode: undefined as string | undefined };
+    }
+    const { error } = await supabase.auth.signInWithOtp({ phone: normalized, options: { shouldCreateUser: false } });
+    if (error) throw error;
+    return { devCode: undefined as string | undefined };
+  }
+  const accountExists = localAuthRecords().some((account) => account.email === normalized);
+  if (!accountExists) return { devCode: undefined as string | undefined };
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return { devCode: String(values[0] % 1_000_000).padStart(6, "0") };
+}
+
+export async function completePasswordReset(identity: string, method: ResetMethod, token: string, newPassword: string, expectedLocalCode?: string) {
+  const normalized = identity.trim().toLowerCase();
+  if (supabase) {
+    const { error: verifyError } = method === "email"
+      ? await supabase.auth.verifyOtp({ email: normalized, token, type: "recovery" })
+      : await supabase.auth.verifyOtp({ phone: normalized, token, type: "sms" });
+    if (verifyError) throw verifyError;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return;
+  }
+  if (!expectedLocalCode || token !== expectedLocalCode) throw new Error("The verification code is incorrect or expired");
+  const account = localAuthRecords().find((record) => record.email === normalized);
+  if (!account) throw new Error("The verification code is incorrect or expired");
+  saveLocalAuth({ ...account, password: newPassword });
+}
+
 export async function signOutShared() {
   await supabase?.auth.signOut();
 }
