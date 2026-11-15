@@ -10,6 +10,7 @@ export const supabase = url && key
 
 type LocalAuthRecord = { id: string; email: string; password: string; profile: { role: "super_admin" | "user"; balance: number; referral_code?: string; user_code?: string } };
 const LOCAL_AUTH_KEY = "tp-registered-users";
+const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
 const isPublicUid = (value: unknown): value is string => typeof value === "string" && /^\d{8}$/.test(value);
 const newPublicUid = () => String(Math.floor(10_000_000 + Math.random() * 90_000_000));
 const newLocalPublicUid = (records: LocalAuthRecord[]) => {
@@ -75,7 +76,7 @@ export async function authenticate(identity: string, password: string, mode: "lo
         }
         const { data: profile } = await (supabase as any).from("profiles").select("role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
         const { data: roleRows } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
-        const assignedRole = (roleRows ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
+        const assignedRole = (roleRows ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : normalized === SUPER_ADMIN_EMAIL ? "super_admin" : "user";
         if (mode === "login") void (supabase as any).rpc("record_login_event", { p_device: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 250) : "Web", p_ip: null, p_status: "success" });
         let userCode = profile?.user_code;
         let referralCode = profile?.referral_code;
