@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Activity, ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, Banknote, ChevronRight, CircleUserRound, Clock3, Download, FileClock, Filter, Search, ShieldCheck, Users, WalletCards, X, type LucideIcon } from "lucide-react";
-import { useStore, money } from "@/lib/store";
+import { useStore, money, SUPER_ADMIN_EMAIL } from "@/lib/store";
 import { supabase } from "@/lib/supabase";
 
 type AdminRole = "admin" | "sub_admin" | "super_admin";
@@ -84,8 +84,9 @@ export function AdminDashboard() {
       setLoadError("");
       const { data: roles, error: roleError } = await (supabase as any).from("user_roles").select("user_id,role,granted_by,created_at").eq("user_id", store.user.authId).in("role", ["admin", "sub_admin", "super_admin"]);
       if (!live) return;
-      if (roleError) { setLoadError("Unable to verify admin permissions. Apply the SQL migration, then retry."); setLoading(false); return; }
-      const roleValue = (roles ?? []).some((item: RoleRow) => item.role === "super_admin") ? "super_admin" : (roles ?? []).some((item: RoleRow) => item.role === "admin") ? "admin" : (roles ?? []).some((item: RoleRow) => item.role === "sub_admin") ? "sub_admin" : null;
+      const primaryAdmin = store.user?.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+      if (roleError && !primaryAdmin) { setLoadError("Unable to verify admin permissions. Apply the SQL migration, then retry."); setLoading(false); return; }
+      const roleValue = primaryAdmin ? "super_admin" : (roles ?? []).some((item: RoleRow) => item.role === "super_admin") ? "super_admin" : (roles ?? []).some((item: RoleRow) => item.role === "admin") ? "admin" : (roles ?? []).some((item: RoleRow) => item.role === "sub_admin") ? "sub_admin" : null;
       setRole(roleValue);
       setAuthorized(Boolean(roleValue));
       if (!roleValue) { setLoading(false); navigate({ to: "/" }); return; }

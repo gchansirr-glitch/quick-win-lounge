@@ -8,6 +8,7 @@ export type VipLevel = { level: number; name: string; wagerRequired: number; com
 export type CashRequest = { id: string; type: "deposit" | "withdraw"; amount: number; method: string; account?: string; accountName?: string; userEmail?: string; receiptImage?: string; referenceLast5?: string; status: "pending" | "approved" | "rejected"; at: number };
 export type Bet = { id: string; kind: MarketId; dur: number; period: number; sel: Side; odds: number; target: number; amount: number; at: number; settled?: boolean; won?: number; result?: Side };
 export type UserRole = "user" | "sub-admin" | "affiliate-agent" | "super-admin";
+export const SUPER_ADMIN_EMAIL = "acagaming75@gmail.com";
 export type User = { email: string; phone?: string; uid: string; authId?: string; inviteCode: string; lastLoginAt?: number; isAdmin: boolean; role: UserRole };
 
 const isValidPublicUid = (value: unknown): value is string => typeof value === "string" && /^\d{8}$/.test(value);
@@ -47,7 +48,8 @@ const KEY = "tp-lottery-v1";
 const SESSION_KEY = "tp-lottery-session-v1";
 const profileKeys = ["balance", "vault", "txs", "bets", "lastCheckIn", "streak", "redeemed", "requests"] as const;
 const uid = () => Math.random().toString(36).slice(2, 10);
-const persistableState = (state: State): State => ({ ...state, user: state.user ? { ...state.user, role: "user", isAdmin: false } : null, profiles: state.user ? { [state.user.email || state.user.phone || state.user.uid]: state.profiles[state.user.email || state.user.phone || state.user.uid] } : {} });
+const isPrimarySuperAdmin = (email?: string | null) => email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+const persistableState = (state: State): State => ({ ...state, user: state.user ? { ...state.user, role: isPrimarySuperAdmin(state.user.email) ? "super-admin" : "user", isAdmin: isPrimarySuperAdmin(state.user.email) } : null, profiles: state.user ? { [state.user.email || state.user.phone || state.user.uid]: state.profiles[state.user.email || state.user.phone || state.user.uid] } : {} });
 
 type Ctx = State & {
   ready: boolean;
@@ -87,7 +89,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           delete savedState.subAdminEmails;
           const restored = { ...initial, ...savedState } as State;
           if (restored.user) {
-            restored.user = { ...restored.user, role: "user", isAdmin: false };
+            const primaryAdmin = isPrimarySuperAdmin(restored.user.email);
+            restored.user = { ...restored.user, role: primaryAdmin ? "super-admin" : "user", isAdmin: primaryAdmin };
             const oldUid = typeof restored.user.uid === "string" ? restored.user.uid : "";
             const publicUid = isValidPublicUid(oldUid) ? oldUid : createUniquePublicUid([]);
             restored.user = { ...restored.user, uid: publicUid, authId: restored.user.authId ?? (oldUid.includes("-") ? oldUid : undefined), inviteCode: restored.user.inviteCode || publicUid, lastLoginAt: restored.user.lastLoginAt ?? Date.now() };
@@ -101,23 +104,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (authUser) {
           const { data: profile } = await (supabase as any).from("profiles").select("id,email,role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
           const { data: assignedRoles } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
-          if (profile) {
-            let publicUid = profile.user_code;
-            let referralCode = profile.referral_code;
+          if (profile || isPrimarySuperAdmin(authUser.email)) {
+            let publicUid = profile?.user_code;
+            let referralCode = profile?.referral_code;
             if (!isValidPublicUid(publicUid)) {
-              const { data: ensured } = await (supabase as any).rpc("ensure_my_public_id");
-              const ensuredRow = Array.isArray(ensured) ? ensured[0] : ensured;
-              publicUid = isValidPublicUid(ensuredRow?.user_code) ? ensuredRow.user_code : createUniquePublicUid([]);
-              referralCode = ensuredRow?.referral_code || publicUid;
+              try {
+                const { data: ensured } = await (supabase as any).rpc("ensure_my_public_id");
+                const ensuredRow = Array.isArray(ensured) ? ensured[0] : ensured;
+                publicUid = isValidPublicUid(ensuredRow?.user_code) ? ensuredRow.user_code : undefined;
+                referralCode = ensuredRow?.referral_code || referralCode;
+              } catch {}
+              publicUid = publicUid || createUniquePublicUid([]);
+              referralCode = referralCode || publicUid;
             }
-            const role = (assignedRoles ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
+            const role = (assignedRoles ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : isPrimarySuperAdmin(authUser.email) ? "super_admin" : "user";
             const mappedRole = mapDatabaseRole(role);
-            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: referralCode || publicUid, lastLoginAt: authUser.last_sign_in_at ? Date.parse(authUser.last_sign_in_at) : Date.now(), isAdmin: mappedRole !== "user", role: mappedRole }, balance: Number(profile.balance ?? p.balance) }));
+            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: referralCode || publicUid, lastLoginAt: authUser.last_sign_in_at ? Date.parse(authUser.last_sign_in_at) : Date.now(), isAdmin: mappedRole !== "user", role: mappedRole }, balance: Number(profile?.balance ?? p.balance) }));
           }
           channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
           roleChannel = supabase.channel(`role-sync:${authUser.id}`).on("postgres_changes", { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${authUser.id}` }, async () => {
             const { data: nextRoles } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
-            const roleValue = (nextRoles ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (nextRoles ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (nextRoles ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
+            const roleValue = (nextRoles ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (nextRoles ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (nextRoles ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : isPrimarySuperAdmin(authUser.email) ? "super_admin" : "user";
             const role = mapDatabaseRole(roleValue);
             setS((p) => p.user?.authId === authUser.id ? { ...p, user: { ...p.user, role, isAdmin: role !== "user" } } : p);
           }).subscribe();
@@ -146,7 +153,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const phone = suppliedPhone ?? (!isEmail ? normalized : undefined);
       const existing = undefined;
       const profileRole: UserRole | undefined = authProfile?.role === "super_admin" ? "super-admin" : authProfile?.role === "admin" || authProfile?.role === "sub_admin" ? "sub-admin" : authProfile?.role === "affiliate_agent" ? "affiliate-agent" : undefined;
-      const role: UserRole = profileRole ?? "user";
+      const role: UserRole = profileRole ?? (isPrimarySuperAdmin(normalized) ? "super-admin" : "user");
       const publicUid = createUniquePublicUid([], authProfile?.user_code);
       const inviteCode = authProfile?.referral_code || existing?.inviteCode || publicUid;
       const account: User = { email: isEmail ? normalized : "", phone, uid: publicUid, authId, inviteCode, lastLoginAt: Date.now(), isAdmin: role !== "user", role };
