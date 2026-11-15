@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { BottomSheet, btnPrimary, inputCls } from "@/components/Sheet";
 import { TxList } from "@/components/TxList";
 import { useStore, money } from "@/lib/store";
+import { createDepositRequest, createWithdrawalRequest, saveUserPayoutAccounts, supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/wallet")({
   validateSearch: z.object({ action: z.enum(["deposit", "withdraw"]).optional() }),
@@ -42,20 +43,26 @@ function WalletPage() {
   const dep = s.txs.filter((t) => t.type === "deposit").reduce((a, t) => a + t.amount, 0);
   const wd = -s.txs.filter((t) => t.type === "withdraw").reduce((a, t) => a + t.amount, 0);
 
-  const submit = () => {
+  const submit = async () => {
     const n = Number(amt);
     const minimum = open === "deposit" ? 5000 : 10000;
     if (!n || n < minimum) return toast.error(`Minimum ${open} is MMK ${minimum.toLocaleString()}`);
     const paymentAccount = selectedAccount || acct;
     if (open === "deposit") {
       if (!receiptImage && !/^\d{5}$/.test(referenceLast5)) return toast.error("Upload a receipt or enter the last 5 reference digits");
-      s.deposit(n, method, paymentAccount, acctName, receiptImage, referenceLast5);
-      toast.success(`Deposit request for ${money(n)} submitted for review`);
+      try {
+        if (supabase) await createDepositRequest({ amount: n, method, senderAccount: paymentAccount, receiverAccount: method === "KPay" ? s.paymentAccounts.kpayPhone : s.paymentAccounts.wavePhone, senderName: acctName, slipLast5: referenceLast5, receiptUrl: receiptImage });
+        s.deposit(n, method, paymentAccount, acctName, receiptImage, referenceLast5);
+        toast.success(`Deposit request for ${money(n)} submitted for review`);
+      } catch { return toast.error("Unable to submit deposit request. Please try again."); }
     }
     else {
       if (paymentAccount.length < 6) return toast.error("Select or enter your account number");
-      if (!s.withdraw(n, method, paymentAccount, acctName)) return toast.error("Insufficient balance");
-      toast.success(`Withdrawal request for ${money(n)} submitted for review`);
+      try {
+        if (supabase) await createWithdrawalRequest({ amount: n, method, recipientName: acctName, accountNumber: paymentAccount });
+        if (!s.withdraw(n, method, paymentAccount, acctName)) return toast.error("Insufficient balance");
+        toast.success(`Withdrawal request for ${money(n)} submitted for review`);
+      } catch { return toast.error("Unable to submit withdrawal request. Check your balance and try again."); }
     }
     setAmt(""); setAcct(""); setAcctName(""); setReceiptImage(""); setReferenceLast5(""); setDepositStep(1); setOpen(null);
   };
@@ -77,7 +84,7 @@ function WalletPage() {
           {editingAccounts && <div className="mt-3 grid gap-2">
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">KPay</p><div className="grid grid-cols-2 gap-2"><input value={accountDraft.kpayPhone} onChange={(e) => setAccountDraft({ ...accountDraft, kpayPhone: e.target.value })} placeholder="Phone number" className={inputCls} /><input value={accountDraft.kpayName} onChange={(e) => setAccountDraft({ ...accountDraft, kpayName: e.target.value })} placeholder="Account name" className={inputCls} /></div>
             <p className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Wave Pay</p><div className="grid grid-cols-2 gap-2"><input value={accountDraft.wavePhone} onChange={(e) => setAccountDraft({ ...accountDraft, wavePhone: e.target.value })} placeholder="Phone number" className={inputCls} /><input value={accountDraft.waveName} onChange={(e) => setAccountDraft({ ...accountDraft, waveName: e.target.value })} placeholder="Account name" className={inputCls} /></div>
-            <button onClick={() => { s.savePaymentAccounts(accountDraft); setEditingAccounts(false); toast.success("Payment accounts saved"); }} className={btnPrimary}>Save accounts</button>
+            <button onClick={async () => { try { if (supabase) await saveUserPayoutAccounts(accountDraft); s.savePaymentAccounts(accountDraft); setEditingAccounts(false); toast.success("Payment accounts saved"); } catch { toast.error("Unable to save payout accounts"); } }} className={btnPrimary}>Save accounts</button>
           </div>}
         </section>
         <div className="grid grid-cols-2 gap-3">
