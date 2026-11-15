@@ -102,11 +102,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { data: profile } = await (supabase as any).from("profiles").select("id,email,role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
           const { data: assignedRoles } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
           if (profile) {
-            const publicUid = isValidPublicUid(profile.user_code) ? profile.user_code : createUniquePublicUid([]);
-            if (!isValidPublicUid(profile.user_code)) void (supabase as any).from("profiles").update({ user_code: publicUid, referral_code: profile.referral_code || publicUid }).eq("id", authUser.id);
+            let publicUid = profile.user_code;
+            let referralCode = profile.referral_code;
+            if (!isValidPublicUid(publicUid)) {
+              const { data: ensured } = await (supabase as any).rpc("ensure_my_public_id");
+              const ensuredRow = Array.isArray(ensured) ? ensured[0] : ensured;
+              publicUid = isValidPublicUid(ensuredRow?.user_code) ? ensuredRow.user_code : createUniquePublicUid([]);
+              referralCode = ensuredRow?.referral_code || publicUid;
+            }
             const role = (assignedRoles ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (assignedRoles ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
             const mappedRole = mapDatabaseRole(role);
-            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: profile.referral_code || publicUid, lastLoginAt: authUser.last_sign_in_at ? Date.parse(authUser.last_sign_in_at) : Date.now(), isAdmin: mappedRole !== "user", role: mappedRole }, balance: Number(profile.balance ?? p.balance) }));
+            setS((p) => ({ ...p, user: { email: authUser.email ?? "", phone: authUser.phone ?? undefined, uid: publicUid, authId: authUser.id, inviteCode: referralCode || publicUid, lastLoginAt: authUser.last_sign_in_at ? Date.parse(authUser.last_sign_in_at) : Date.now(), isAdmin: mappedRole !== "user", role: mappedRole }, balance: Number(profile.balance ?? p.balance) }));
           }
           channel = supabase.channel(`profile-sync:${authUser.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${authUser.id}` }, (payload) => setS((p) => ({ ...p, balance: Number((payload.new as { balance?: number }).balance ?? p.balance) }))).subscribe();
           roleChannel = supabase.channel(`role-sync:${authUser.id}`).on("postgres_changes", { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${authUser.id}` }, async () => {
@@ -122,15 +128,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void restore();
     return () => { if (channel) void channel.unsubscribe(); if (roleChannel) void roleChannel.unsubscribe(); };
   }, []);
-  useEffect(() => {
-    if (!ready || !s.user || !supabase) return;
-    const syncProfile = async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      if (!authData.user) return;
-      await (supabase as any).from("profiles").update({ user_code: s.user?.uid, referral_code: s.user?.inviteCode }).eq("id", authData.user.id);
-    };
-    void syncProfile();
-  }, [ready, s.user?.email, s.user?.phone, s.user?.uid, s.user?.authId, s.user?.inviteCode, s.balance]);
   useEffect(() => {
     if (!ready) return;
     const serialized = JSON.stringify(persistableState(s));

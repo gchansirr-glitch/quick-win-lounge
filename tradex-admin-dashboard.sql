@@ -71,8 +71,8 @@ begin
   insert into public.profiles(id,email,phone,role,status,balance,user_code,referral_code,referred_by,created_at,updated_at)
     values (new.id, coalesce(new.email, new.phone || '@phone.local'), new.phone, 'user','active',0,proposed_uid,proposed_uid,referrer,coalesce(new.created_at,now()),now())
     on conflict (id) do update set
-      user_code = coalesce(public.profiles.user_code, excluded.user_code),
-      referral_code = coalesce(public.profiles.referral_code, excluded.referral_code),
+      user_code = case when public.profiles.user_code ~ '^[0-9]{8}$' then public.profiles.user_code else excluded.user_code end,
+      referral_code = case when public.profiles.referral_code ~ '^[0-9]{8}$' then public.profiles.referral_code else excluded.referral_code end,
       phone = coalesce(public.profiles.phone, excluded.phone),
       updated_at = now();
   return new;
@@ -108,6 +108,13 @@ insert into public.user_roles(user_id,role)
 select p.id, case p.role when 'super_admin' then 'super_admin' when 'admin' then 'admin' when 'sub_admin' then 'sub_admin' else null end
 from public.profiles p where p.role in ('super_admin','admin','sub_admin')
 on conflict (user_id,role) do nothing;
+
+create table if not exists public.sub_admin_access (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  granted_by uuid not null references auth.users(id),
+  permissions jsonb not null default '{"users.read":true,"transactions.review":true,"audit.read":true}'::jsonb,
+  created_at timestamptz not null default now()
+);
 
 create table if not exists public.payout_accounts (
   id uuid primary key default gen_random_uuid(),
@@ -230,16 +237,38 @@ returns boolean language sql stable security definer set search_path = '' as $$
   );
 $$;
 
+create or replace function public.ensure_my_public_id()
+returns table(user_code text, referral_code text) language plpgsql security definer set search_path = '' as $$
+declare current_user_id uuid; current_code text; current_referral text; candidate text;
+begin
+  current_user_id := (select auth.uid());
+  if current_user_id is null then raise exception 'Authentication required'; end if;
+  select p.user_code,p.referral_code into current_code,current_referral from public.profiles p where p.id=current_user_id for update;
+  if current_code is null or current_code !~ '^[0-9]{8}$' then
+    loop
+      candidate := lpad((floor(10000000 + random() * 90000000))::bigint::text,8,'0');
+      exit when not exists (select 1 from public.profiles p where p.user_code=candidate);
+    end loop;
+    current_code := candidate;
+  end if;
+  current_referral := coalesce(nullif(current_referral,''),current_code);
+  update public.profiles set user_code=current_code, referral_code=current_referral, updated_at=now() where id=current_user_id;
+  return query select current_code,current_referral;
+end;
+$$;
+
 revoke all on function public.has_admin_access() from public;
 revoke all on function public.is_super_admin() from public;
+revoke all on function public.ensure_my_public_id() from public;
 grant execute on function public.has_admin_access() to authenticated;
 grant execute on function public.is_super_admin() to authenticated;
+grant execute on function public.ensure_my_public_id() to authenticated;
 
 -- Remove prior policies on these admin data tables before installing the scoped policy set.
 do $$
 declare t text; p record;
 begin
-  foreach t in array array['profiles','user_roles','payout_accounts','transaction_requests','wallet_transactions','bets','admin_audit_logs','login_history'] loop
+  foreach t in array array['profiles','user_roles','sub_admin_access','payout_accounts','transaction_requests','wallet_transactions','bets','admin_audit_logs','login_history'] loop
     for p in select policyname from pg_policies where schemaname = 'public' and tablename = t loop
       execute format('drop policy if exists %I on public.%I', p.policyname, t);
     end loop;
@@ -248,6 +277,7 @@ end $$;
 
 alter table public.profiles enable row level security;
 alter table public.user_roles enable row level security;
+alter table public.sub_admin_access enable row level security;
 alter table public.payout_accounts enable row level security;
 alter table public.transaction_requests enable row level security;
 alter table public.wallet_transactions enable row level security;
@@ -260,6 +290,8 @@ create policy profiles_read_self_or_admin on public.profiles for select to authe
 create policy profiles_update_self_safe on public.profiles for update to authenticated
   using (id = (select auth.uid())) with check (id = (select auth.uid()));
 create policy user_roles_read_self_or_admin on public.user_roles for select to authenticated
+  using (user_id = (select auth.uid()) or (select public.has_admin_access()));
+create policy sub_admin_access_read_self_or_admin on public.sub_admin_access for select to authenticated
   using (user_id = (select auth.uid()) or (select public.has_admin_access()));
 create policy payout_accounts_read_owner_or_admin on public.payout_accounts for select to authenticated
   using (user_id = (select auth.uid()) or (select public.has_admin_access()));
@@ -283,15 +315,15 @@ create policy login_history_insert_self on public.login_history for insert to au
 create policy admin_audit_read_admin on public.admin_audit_logs for select to authenticated
   using ((select public.has_admin_access()));
 
-revoke all on public.user_roles, public.admin_audit_logs, public.wallet_transactions, public.bets from anon, authenticated;
+revoke all on public.user_roles, public.sub_admin_access, public.admin_audit_logs, public.wallet_transactions, public.bets from anon, authenticated;
 revoke all on public.profiles, public.payout_accounts, public.transaction_requests, public.login_history from anon, authenticated;
-grant select on public.user_roles, public.admin_audit_logs, public.wallet_transactions, public.bets to authenticated;
+grant select on public.user_roles, public.sub_admin_access, public.admin_audit_logs, public.wallet_transactions, public.bets to authenticated;
 grant select on public.profiles, public.payout_accounts, public.transaction_requests, public.login_history to authenticated;
 grant insert (user_id, type, amount, method, sender_account, sender_name, receiver_account, slip_last5, receipt_url) on public.transaction_requests to authenticated;
 grant insert (user_id, method, account_name, account_number) on public.payout_accounts to authenticated;
 grant update (method, account_name, account_number) on public.payout_accounts to authenticated;
 grant insert (user_id, device, status) on public.login_history to authenticated;
-grant update (user_code, referral_code, username, full_name) on public.profiles to authenticated;
+grant update (username, full_name) on public.profiles to authenticated;
 
 create or replace function public.assign_sub_admin(p_identifier text)
 returns uuid language plpgsql security definer set search_path = '' as $$
@@ -303,6 +335,8 @@ begin
   if target is null then raise exception 'User not found'; end if;
   insert into public.user_roles(user_id, role, granted_by) values (target, 'sub_admin', (select auth.uid()))
     on conflict (user_id, role) do nothing;
+  insert into public.sub_admin_access(user_id,granted_by) values (target,(select auth.uid()))
+    on conflict (user_id) do update set granted_by=excluded.granted_by;
   insert into public.admin_audit_logs(staff_id, staff_email, action_type, target_id, reason)
     values ((select auth.uid()), coalesce((select u.email from auth.users u where u.id = (select auth.uid())), ''), 'role.assign_sub_admin', target::text, 'Granted by super admin');
   return target;
@@ -316,6 +350,7 @@ begin
   if not (select public.is_super_admin()) then raise exception 'Only a super admin can manage sub-admin access'; end if;
   select p.email into old_email from public.profiles p where p.id = p_user_id;
   delete from public.user_roles where user_id = p_user_id and role = 'sub_admin';
+  delete from public.sub_admin_access where user_id = p_user_id;
   insert into public.admin_audit_logs(staff_id, staff_email, action_type, target_id, reason)
     values ((select auth.uid()), coalesce((select u.email from auth.users u where u.id = (select auth.uid())), ''), 'role.remove_sub_admin', p_user_id::text, 'Revoked by super admin');
 end;
@@ -434,7 +469,7 @@ do $$
 declare t text;
 begin
   if exists (select 1 from pg_publication where pubname='supabase_realtime') then
-    foreach t in array array['profiles','user_roles','transaction_requests','payout_accounts','wallet_transactions','bets','admin_audit_logs','login_history'] loop
+    foreach t in array array['profiles','user_roles','sub_admin_access','transaction_requests','payout_accounts','wallet_transactions','bets','admin_audit_logs','login_history'] loop
       if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and schemaname='public' and tablename=t) then
         execute format('alter publication supabase_realtime add table public.%I', t);
       end if;

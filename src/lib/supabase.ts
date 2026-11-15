@@ -77,11 +77,16 @@ export async function authenticate(identity: string, password: string, mode: "lo
         const { data: roleRows } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
         const assignedRole = (roleRows ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
         if (mode === "login") void (supabase as any).rpc("record_login_event", { p_device: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 250) : "Web", p_ip: null, p_status: "success" });
-        let userCode = isPublicUid(profile?.user_code) ? profile.user_code : await reservePublicUid();
-        if (!isPublicUid(profile?.user_code)) {
-          await (supabase as any).from("profiles").update({ user_code: userCode, referral_code: profile?.referral_code || userCode }).eq("id", authUser.id);
+        let userCode = profile?.user_code;
+        let referralCode = profile?.referral_code;
+        if (!isPublicUid(userCode)) {
+          const { data: ensured } = await (supabase as any).rpc("ensure_my_public_id");
+          const ensuredRow = Array.isArray(ensured) ? ensured[0] : ensured;
+          userCode = ensuredRow?.user_code;
+          referralCode = ensuredRow?.referral_code;
         }
-        return { id: authUser.id, email: authUser.email ?? "", phone: authUser.phone ?? undefined, profile: { ...(profile ?? { role, balance: 0 }), role: assignedRole, user_code: userCode, referral_code: profile?.referral_code || userCode } };
+        if (!isPublicUid(userCode)) throw new Error("Could not load your User ID. Please retry.");
+        return { id: authUser.id, email: authUser.email ?? "", phone: authUser.phone ?? undefined, profile: { ...(profile ?? { role, balance: 0 }), role: assignedRole, user_code: userCode, referral_code: referralCode || userCode } };
       }
     } catch {
       return fallbackAuthenticate(normalized, password, mode, inviteCode);
