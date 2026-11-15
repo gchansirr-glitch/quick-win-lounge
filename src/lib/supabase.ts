@@ -39,7 +39,7 @@ function saveLocalAuth(record: LocalAuthRecord) {
 
 function fallbackAuthenticate(identity: string, password: string, mode: "login" | "register", inviteCode: string) {
   const normalized = identity.trim().toLowerCase();
-  const role = normalized === "acagaming75@gmail.com" ? "super_admin" as const : "user" as const;
+  const role = "user" as const;
   const records = localAuthRecords();
   if (mode === "register") {
     if (records.some((record) => record.email === normalized)) throw new Error("An account with this contact already exists");
@@ -61,29 +61,32 @@ export async function authenticate(identity: string, password: string, mode: "lo
   if (supabase) {
     try {
       const isEmail = /^\S+@\S+\.\S+$/.test(normalized);
+      const proposedUserCode = mode === "register" ? await reservePublicUid() : undefined;
+      const signupOptions = { data: { invite_code: inviteCode.trim().toUpperCase(), public_uid: proposedUserCode } };
       const result = mode === "register"
-        ? isEmail ? await supabase.auth.signUp({ email: normalized, password }) : await supabase.auth.signUp({ phone: normalized, password })
+        ? isEmail ? await supabase.auth.signUp({ email: normalized, password, options: signupOptions }) : await supabase.auth.signUp({ phone: normalized, password, options: signupOptions })
         : isEmail ? await supabase.auth.signInWithPassword({ email: normalized, password }) : await supabase.auth.signInWithPassword({ phone: normalized, password });
       if (!result.error && result.data.user) {
         const authUser = result.data.user;
-        const role = normalized === "acagaming75@gmail.com" ? "super_admin" : "user";
+        const role = "user";
         if (mode === "register") {
-          let referrerId: string | null = null;
-          if (inviteCode.trim()) {
-            const { data: referrer } = await (supabase as any).from("profiles").select("id").eq("referral_code", inviteCode.trim()).maybeSingle();
-            referrerId = referrer?.id ?? null;
-          }
-          const userCode = await reservePublicUid();
-          const { error: profileError } = await (supabase as any).from("profiles").upsert({ id: authUser.id, email: isEmail ? normalized : `${normalized}@phone.local`, role, balance: 0, user_code: userCode, referred_by: referrerId, referral_code: userCode }, { onConflict: "id" });
-          if (profileError) throw profileError;
+          const userCode = proposedUserCode ?? newPublicUid();
           return { id: authUser.id, email: isEmail ? normalized : "", phone: isEmail ? undefined : normalized, profile: { role, balance: 0, user_code: userCode, referral_code: userCode } };
         }
         const { data: profile } = await (supabase as any).from("profiles").select("role,balance,referral_code,user_code").eq("id", authUser.id).maybeSingle();
-        let userCode = isPublicUid(profile?.user_code) ? profile.user_code : await reservePublicUid();
-        if (!isPublicUid(profile?.user_code)) {
-          await (supabase as any).from("profiles").update({ user_code: userCode, referral_code: profile?.referral_code || userCode }).eq("id", authUser.id);
+        const { data: roleRows } = await (supabase as any).from("user_roles").select("role").eq("user_id", authUser.id).in("role", ["admin", "sub_admin", "super_admin"]);
+        const assignedRole = (roleRows ?? []).some((item: { role: string }) => item.role === "super_admin") ? "super_admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "admin") ? "admin" : (roleRows ?? []).some((item: { role: string }) => item.role === "sub_admin") ? "sub_admin" : "user";
+        if (mode === "login") void (supabase as any).rpc("record_login_event", { p_device: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 250) : "Web", p_ip: null, p_status: "success" });
+        let userCode = profile?.user_code;
+        let referralCode = profile?.referral_code;
+        if (!isPublicUid(userCode)) {
+          const { data: ensured } = await (supabase as any).rpc("ensure_my_public_id");
+          const ensuredRow = Array.isArray(ensured) ? ensured[0] : ensured;
+          userCode = ensuredRow?.user_code;
+          referralCode = ensuredRow?.referral_code;
         }
-        return { id: authUser.id, email: authUser.email ?? "", phone: authUser.phone ?? undefined, profile: { ...(profile ?? { role, balance: 0 }), user_code: userCode, referral_code: profile?.referral_code || userCode } };
+        if (!isPublicUid(userCode)) throw new Error("Could not load your User ID. Please retry.");
+        return { id: authUser.id, email: authUser.email ?? "", phone: authUser.phone ?? undefined, profile: { ...(profile ?? { role, balance: 0 }), role: assignedRole, user_code: userCode, referral_code: referralCode || userCode } };
       }
     } catch {
       return fallbackAuthenticate(normalized, password, mode, inviteCode);
@@ -130,8 +133,42 @@ export async function completePasswordReset(identity: string, method: ResetMetho
   saveLocalAuth({ ...account, password: newPassword });
 }
 
+export async function saveUserPayoutAccounts(accounts: { kpayPhone: string; kpayName: string; wavePhone: string; waveName: string }) {
+  if (!supabase) return null;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Please sign in again");
+  for (const account of [{ method: "KPay", account_number: accounts.kpayPhone, account_name: accounts.kpayName }, { method: "Wave Pay", account_number: accounts.wavePhone, account_name: accounts.waveName }]) {
+    if (!account.account_number.trim()) continue;
+    const { data: existing, error: lookupError } = await (supabase as any).from("payout_accounts").select("id").eq("user_id", auth.user.id).eq("method", account.method).maybeSingle();
+    if (lookupError) throw lookupError;
+    const result = existing
+      ? await (supabase as any).from("payout_accounts").update({ account_number: account.account_number.trim(), account_name: account.account_name.trim() }).eq("id", existing.id)
+      : await (supabase as any).from("payout_accounts").insert({ user_id: auth.user.id, method: account.method, account_number: account.account_number.trim(), account_name: account.account_name.trim() });
+    if (result.error) throw result.error;
+  }
+  return true;
+}
+
+export async function createDepositRequest(input: { amount: number; method: string; senderAccount: string; receiverAccount: string; senderName?: string; slipLast5?: string; receiptUrl?: string }) {
+  if (!supabase) return null;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Please sign in again");
+  const { error } = await (supabase as any).from("transaction_requests").insert({ user_id: auth.user.id, type: "deposit", amount: input.amount, method: input.method, sender_account: input.senderAccount, sender_name: input.senderName ?? null, receiver_account: input.receiverAccount, slip_last5: input.slipLast5 ?? null, receipt_url: input.receiptUrl ?? null, status: "pending" });
+  if (error) throw error;
+  return true;
+}
+
+export async function createWithdrawalRequest(input: { amount: number; method: string; recipientName: string; accountNumber: string }) {
+  if (!supabase) return null;
+  const { data, error } = await (supabase as any).rpc("request_withdrawal", { p_amount: input.amount, p_method: input.method, p_recipient: input.recipientName, p_account: input.accountNumber });
+  if (error) throw error;
+  return data;
+}
+
 export async function signOutShared() {
-  await supabase?.auth.signOut();
+  if (!supabase) return;
+  try { await (supabase as any).rpc("record_logout_event"); } catch { /* Continue sign-out if history logging is unavailable. */ }
+  await supabase.auth.signOut();
 }
 
 export async function placeSharedBet(input: { roundId: string; marketId: string; side: "UP" | "DOWN"; amount: number }) {
