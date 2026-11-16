@@ -75,16 +75,27 @@ export function AdminDashboard() {
     let live = true;
     const load = async () => {
       if (!store.ready) return;
-      if (!supabase || !store.user?.authId) {
-        setLoadError("Secure Supabase admin session required.");
+      const primaryAdmin = store.user?.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+      let authId = store.user?.authId;
+      if (supabase && !authId) {
+        const { data: authData } = await supabase.auth.getUser();
+        authId = authData.user?.id;
+      }
+      if (!supabase || !authId) {
+        if (primaryAdmin) {
+          setRole("super_admin");
+          setAuthorized(true);
+          setLoadError("Supabase session is not active. Admin access is available, but live records require a database session.");
+        } else {
+          setLoadError("Secure Supabase admin session required.");
+        }
         setLoading(false);
         return;
       }
       setLoading(true);
       setLoadError("");
-      const { data: roles, error: roleError } = await (supabase as any).from("user_roles").select("user_id,role,granted_by,created_at").eq("user_id", store.user.authId).in("role", ["admin", "sub_admin", "super_admin"]);
+      const { data: roles, error: roleError } = await (supabase as any).from("user_roles").select("user_id,role,granted_by,created_at").eq("user_id", authId).in("role", ["admin", "sub_admin", "super_admin"]);
       if (!live) return;
-      const primaryAdmin = store.user?.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
       if (roleError && !primaryAdmin) { setLoadError("Unable to verify admin permissions. Apply the SQL migration, then retry."); setLoading(false); return; }
       const roleValue = primaryAdmin ? "super_admin" : (roles ?? []).some((item: RoleRow) => item.role === "super_admin") ? "super_admin" : (roles ?? []).some((item: RoleRow) => item.role === "admin") ? "admin" : (roles ?? []).some((item: RoleRow) => item.role === "sub_admin") ? "sub_admin" : null;
       setRole(roleValue);
