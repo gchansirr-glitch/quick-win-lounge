@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Crown, Copy, Vault, History, Settings, LogOut, ChevronRight, Bell, Lock, Globe, Gamepad2, ArrowDownToLine, ArrowUpFromLine, ReceiptText, UserRound, ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { BottomSheet, btnPrimary, inputCls } from "@/components/Sheet";
-import { useStore, money, type Tx } from "@/lib/store";
+import { useStore, money, SUPER_ADMIN_EMAIL, type Tx } from "@/lib/store";
 import { MyPositions } from "@/components/markets";
 
 export const Route = createFileRoute("/account")({
@@ -100,7 +100,7 @@ function Account() {
           ))}
         </div>
 
-        {s.user?.isAdmin && <Link to="/admin" className="flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 p-4 text-left"><span className="flex items-center gap-3 font-semibold text-primary"><Crown className="h-5 w-5" />Admin Dashboard</span><ChevronRight className="h-5 w-5 text-primary" /></Link>}
+        {(s.user?.isAdmin || s.user?.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL) && <Link to="/admin" className="flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 p-4 text-left"><span className="flex items-center gap-3 font-semibold text-primary"><Crown className="h-5 w-5" />Admin Dashboard</span><ChevronRight className="h-5 w-5 text-primary" /></Link>}
         <button onClick={() => { s.logout(); nav({ to: "/login" }); }} className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary py-3 font-semibold text-primary"><LogOut className="h-4 w-4" />Log out</button>
       </div>
 
