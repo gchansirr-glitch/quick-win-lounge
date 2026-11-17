@@ -76,15 +76,10 @@ export function AdminDashboard() {
     const load = async () => {
       if (!store.ready) return;
       const primaryAdmin = store.user?.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
-      let authId = store.user?.authId;
-      if (supabase && !authId) {
-        const { data: authData } = await supabase.auth.getUser();
-        authId = authData.user?.id;
-      }
+      if (primaryAdmin) { setRole("super_admin"); setAuthorized(true); }
+      const authId = store.user?.authId;
       if (!supabase || !authId) {
         if (primaryAdmin) {
-          setRole("super_admin");
-          setAuthorized(true);
           setLoadError("Supabase session is not active. Admin access is available, but live records require a database session.");
         } else {
           setLoadError("Secure Supabase admin session required.");
