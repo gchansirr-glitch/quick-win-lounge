@@ -207,7 +207,7 @@ export function TransactionsView({
   );
 }
 
-function CardField({ label, value, badge, strong }: { label: string; value: string; badge?: "status" | "linked" | "unlinked" | "completed" | "pending" | "rejected"; strong?: boolean }) {
+function CardField({ label, value, badge, strong }: { label: string; value: string; badge?: "status" | "linked" | "unlinked" | "completed" | "pending" | "rejected" | "success" | "failed" | "suspended"; strong?: boolean }) {
   return (
     <div className="min-w-0">
       <p className="text-[9px] font-semibold uppercase tracking-wider text-[#778294]">{label}</p>
@@ -218,12 +218,12 @@ function CardField({ label, value, badge, strong }: { label: string; value: stri
   );
 }
 
-function StatusBadge({ value, variant }: { value: string; variant?: "status" | "linked" | "unlinked" | "completed" | "pending" | "rejected" }) {
-  const color = variant === "linked" || variant === "completed" || variant === "status" && value === "active"
+function StatusBadge({ value, variant }: { value: string; variant?: "status" | "linked" | "unlinked" | "completed" | "pending" | "rejected" | "success" | "failed" | "suspended" }) {
+  const color = variant === "linked" || variant === "completed" || variant === "success" || variant === "status" && value === "active"
     ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
     : variant === "unlinked"
       ? "border-white/10 bg-white/5 text-[#929eaf]"
-      : variant === "rejected"
+      : variant === "rejected" || variant === "failed"
         ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
         : "border-amber-400/20 bg-amber-400/10 text-amber-300";
   return <span className={`inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-semibold ${color}`}>{value}</span>;
@@ -240,4 +240,116 @@ function formatDateOnly(value: string) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Yangon", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+type LoginRow = {
+  id: string;
+  user_id: string;
+  login_at: string;
+  logout_at: string | null;
+  device: string | null;
+  ip_address: string | null;
+  status: string;
+  risk_flag: string | null;
+};
+
+type AuditRow = {
+  id: string;
+  staff_id: string | null;
+  staff_email: string;
+  action_type: string;
+  target_id: string | null;
+  reason: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export function LoginHistoryView({ rows, profileById, status, setStatus }: { rows: LoginRow[]; profileById: Map<string, ProfileRow>; status: string; setStatus: (value: string) => void }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#242835] bg-[#13161f]">
+      <div className="border-b border-[#242835] p-4">
+        <label className="sr-only" htmlFor="login-status-filter">Login status filter</label>
+        <select id="login-status-filter" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 min-w-52 rounded-lg border border-[#2a2f3a] bg-[#0d0f13] px-3 text-xs text-[#f1f3f8]">
+          <option value="all">Login Status အားလုံး</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="suspended">Suspended</option>
+        </select>
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        {rows.map((row) => {
+          const profile = profileById.get(row.user_id);
+          const isSuspended = row.status === "suspended" || profile?.status === "suspended";
+          const statusLabel = isSuspended ? "Suspended" : row.status === "success" ? "Success" : "Failed";
+          return (
+            <article key={row.id} className="rounded-xl border border-[#242835] bg-[#10131a] p-4">
+              <header className="flex items-center justify-between gap-3 border-b border-[#242835] pb-3">
+                <div><p className="text-[9px] font-semibold uppercase tracking-wider text-[#778294]">USER ID</p><p className="mt-1 font-mono text-sm font-bold text-[#f1f3f8]">{profile?.user_code || row.user_id.slice(0, 8)}</p></div>
+                <StatusBadge value={statusLabel} variant={isSuspended ? "suspended" : row.status === "success" ? "success" : "failed"} />
+              </header>
+              <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
+                <CardField label="LOGIN TIME" value={formatDateTime(row.login_at)} />
+                <CardField label="DEVICE" value={row.device || "Unknown device"} />
+                <CardField label="IP ADDRESS" value={row.ip_address || "—"} />
+                <CardField label="STATUS" value={statusLabel} badge={isSuspended ? "suspended" : row.status === "success" ? "success" : "failed"} />
+                <CardField label="LOGOUT TIME" value={row.logout_at ? formatDateTime(row.logout_at) : "ဝင်ထားဆဲ"} />
+                <CardField label="RISK STATUS" value={row.risk_flag || "No risk flagged"} badge={row.risk_flag ? "rejected" : "success"} />
+              </div>
+            </article>
+          );
+        })}
+        {rows.length === 0 && <p className="col-span-full py-10 text-center text-sm text-[#929eaf]">ကိုက်ညီသော Login မှတ်တမ်း မတွေ့ပါ။</p>}
+      </div>
+    </section>
+  );
+}
+
+export function AuditLogsView({ rows, profileById, search, setSearch }: { rows: AuditRow[]; profileById: Map<string, ProfileRow>; search: string; setSearch: (value: string) => void }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#242835] bg-[#13161f]">
+      <div className="border-b border-[#242835] p-4">
+        <label className="relative block">
+          <Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-[#748093]" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="User ID၊ ဝန်ထမ်း၊ Action ဖြင့် ရှာရန်" className="h-10 w-full rounded-lg border border-[#2a2f3a] bg-[#0d0f13] pl-9 pr-3 text-sm outline-none focus:border-[#f4c772]/60" />
+        </label>
+      </div>
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[900px] border-collapse text-left">
+          <thead className="bg-[#10131a] text-[9px] uppercase tracking-wider text-[#7e899a]"><tr>{["TIMESTAMP", "TARGET USER", "ACTION", "CHANGES", "STAFF", "REASON"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
+          <tbody>{rows.map((row) => <AuditTableRow key={row.id} row={row} profile={row.target_id ? profileById.get(row.target_id) : undefined} />)}</tbody>
+        </table>
+        {rows.length === 0 && <p className="p-10 text-center text-sm text-[#929eaf]">ကိုက်ညီသော Audit မှတ်တမ်း မတွေ့ပါ။</p>}
+      </div>
+      <div className="grid gap-3 p-4 md:hidden">
+        {rows.map((row) => <AuditCard key={row.id} row={row} profile={row.target_id ? profileById.get(row.target_id) : undefined} />)}
+        {rows.length === 0 && <p className="py-10 text-center text-sm text-[#929eaf]">ကိုက်ညီသော Audit မှတ်တမ်း မတွေ့ပါ။</p>}
+      </div>
+    </section>
+  );
+}
+
+function AuditTableRow({ row, profile }: { row: AuditRow; profile: ProfileRow | undefined }) {
+  return <tr className="border-t border-[#242835]"><td className="whitespace-nowrap px-4 py-3 text-xs text-[#c5ccd7]">{formatDateTime(row.created_at)}</td><td className="px-4 py-3 text-xs">{profile?.user_code || row.target_id || "—"}{profile?.full_name ? <span className="mt-1 block text-[10px] text-[#929eaf]">{profile.full_name}</span> : null}</td><td className="px-4 py-3 font-mono text-xs text-[#f4c772]">{row.action_type}</td><td className="px-4 py-3 text-xs">{formatAuditChanges(row.metadata)}</td><td className="px-4 py-3 text-xs">{row.staff_email || "—"}</td><td className="max-w-sm px-4 py-3 text-xs text-[#929eaf]">{row.reason || "—"}</td></tr>;
+}
+
+function AuditCard({ row, profile }: { row: AuditRow; profile: ProfileRow | undefined }) {
+  return (
+    <article className="rounded-xl border border-[#242835] bg-[#10131a] p-4">
+      <header className="flex items-start justify-between gap-3 border-b border-[#242835] pb-3"><p className="font-mono text-xs font-bold text-[#f4c772]">{row.action_type}</p><time className="text-right text-[10px] text-[#929eaf]">{formatDateTime(row.created_at)}</time></header>
+      <div className="mt-3 grid grid-cols-2 gap-4">
+        <CardField label="TARGET USER" value={profile?.user_code || row.target_id || "—"} />
+        <CardField label="CHANGES" value={formatAuditChanges(row.metadata)} />
+        <CardField label="STAFF" value={row.staff_email || "—"} />
+        <CardField label="REASON" value={row.reason || "—"} />
+      </div>
+    </article>
+  );
+}
+
+function formatAuditChanges(metadata: Record<string, unknown>) {
+  const before = metadata["before"];
+  const after = metadata["after"];
+  if (before !== undefined || after !== undefined) return `${String(before ?? "—")} → ${String(after ?? "—")}`;
+  const entries = Object.entries(metadata);
+  return entries.length ? entries.map(([key, value]) => `${key}: ${String(value)}`).join(" · ") : "—";
 }
